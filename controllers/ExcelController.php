@@ -1,0 +1,2 @@
+<?php
+class ExcelController {public function template(): never {$file=__DIR__.'/../templates/Vehicle_Template.xlsx';if(!is_file($file)){http_response_code(404);header('Content-Type: application/json');echo json_encode(['message'=>'Excel template file not found']);exit;}header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');header('Content-Disposition: attachment; filename="Vehicle_Template.xlsx"');header('Content-Length: '.filesize($file));readfile($file);exit;}}

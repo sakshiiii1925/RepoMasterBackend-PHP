@@ -1,0 +1,3 @@
+<?php
+require_once __DIR__ . '/../helpers/response.php';
+class YardController {public function __construct(private YardService $s){} public function list(){jsonResponse($this->s->list((string)queryParam('agencyId','')));}public function get($id){jsonResponse($this->s->get((int)$id,(string)queryParam('agencyId','')));}public function add(){jsonResponse($this->s->add(requestBody()));}public function update($id){jsonResponse($this->s->update((int)$id,requestBody(),(string)queryParam('agencyId','')));}public function delete($id){$this->s->delete((int)$id,(string)queryParam('agencyId',''));jsonResponse('Yard deleted successfully');}}

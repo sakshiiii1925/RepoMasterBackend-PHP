@@ -1,0 +1,14 @@
+{
+  "name": "repomaster/php-backend",
+  "description": "RepoMaster PHP + MySQL REST backend migrated from Spring Boot + PostgreSQL",
+  "type": "project",
+  "require": {
+    "php": ">=8.1",
+    "phpoffice/phpspreadsheet": "^5.9"
+  },
+  "autoload": {
+    "psr-4": {
+      "RepoMaster\\": ""
+    }
+  }
+}
