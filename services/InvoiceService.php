@@ -6,4 +6,66 @@ class InvoiceService {
     public function get(int $id): array { $s=$this->pdo->prepare('SELECT * FROM invoice WHERE id=?');$s->execute([$id]);$r=$s->fetch();if(!$r)throw new RuntimeException('Invoice not found');return invoiceRow($r); }
     public function list(string $agencyId): array {$s=$this->pdo->prepare('SELECT * FROM invoice WHERE agency_id=? ORDER BY id DESC');$s->execute([$agencyId]);return array_map(fn($r)=>invoiceRow($r),$s->fetchAll());}
     public function delete(int $id): void {$s=$this->pdo->prepare('DELETE FROM invoice WHERE id=?');$s->execute([$id]);}
+    //updatePayment
+    public function updatePayment(
+    int $id,
+    array $data
+): array {
+
+    // Check invoice exists
+    $invoice = $this->get($id);
+
+    $paymentReceived =
+        isset($data['paymentReceived'])
+            ? (float)$data['paymentReceived']
+            : 0.0;
+
+    $paymentDate =
+        $data['paymentDate'] ?? null;
+
+    $paymentStatus =
+        $data['paymentStatus'] ?? 'Pending';
+
+
+    // Validate payment amount
+    if ($paymentReceived < 0) {
+
+        throw new InvalidArgumentException(
+            'Payment received cannot be negative'
+        );
+    }
+
+
+    // Prevent overpayment
+    $invoiceTotal =
+        (float)($invoice['invoiceTotal'] ?? 0);
+
+    if ($paymentReceived > $invoiceTotal) {
+
+        throw new InvalidArgumentException(
+            'Payment received cannot be greater than invoice total'
+        );
+    }
+
+
+    // Update payment
+    $stmt = $this->pdo->prepare(
+        'UPDATE invoice
+         SET payment_date = ?,
+             payment_received = ?,
+             payment_status = ?
+         WHERE id = ?'
+    );
+
+    $stmt->execute([
+        $paymentDate,
+        $paymentReceived,
+        $paymentStatus,
+        $id
+    ]);
+
+
+    // Return updated invoice
+    return $this->get($id);
+}
 }

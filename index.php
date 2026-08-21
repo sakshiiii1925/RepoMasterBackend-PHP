@@ -18,6 +18,11 @@ require_once __DIR__ . '/controllers/YardController.php';
 require_once __DIR__ . '/controllers/SearchHistoryController.php';
 require_once __DIR__ . '/controllers/ReportController.php';
 require_once __DIR__ . '/controllers/ExcelController.php';
+require_once __DIR__ .
+    '/services/InvoicePaymentService.php';
+
+require_once __DIR__ .
+    '/controllers/InvoicePaymentController.php';
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
@@ -25,9 +30,18 @@ header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
 $pdo=db();
-$user=new UserController(new UserService($pdo));
-$vehicle=new VehicleController(new VehicleService($pdo),new ExcelService($pdo));
-$invoice=new InvoiceController(new InvoiceService($pdo));
+$user=new UserController(
+    new UserService($pdo));
+$vehicle=
+new VehicleController(
+    new VehicleService($pdo),new ExcelService($pdo));
+$invoice=
+new InvoiceController(
+    new InvoiceService($pdo));
+$invoicePayment =
+new InvoicePaymentController(
+        new InvoicePaymentService($pdo)
+    );
 $yard=new YardController(new YardService($pdo));
 $history=new SearchHistoryController(new SearchHistoryService($pdo));
 $report=new ReportController(new ReportService($pdo),new ExcelReportService());
@@ -78,7 +92,55 @@ try {
  elseif($method==='POST'&&$path==='/api/invoices')$invoice->add();
  elseif($method==='GET'&&$path==='/api/invoices')$invoice->list();
  elseif($method==='GET'&&preg_match('#^/api/invoices/(\d+)$#',$path,$m))$invoice->get($m[1]);
+ elseif($method==='PUT'&&preg_match('#^/api/invoices/(\d+)/payment$#',$path,$m))$invoice->updatePayment($m[1]);
  elseif($method==='DELETE'&&preg_match('#^/api/invoices/(\d+)$#',$path,$m))$invoice->delete($m[1]);
+ elseif(
+    $method === 'POST' &&
+    preg_match(
+        '#^/api/invoices/(\d+)/payments$#',
+        $path,
+        $m
+    )
+)
+    $invoicePayment->add(
+        (int)$m[1]
+    );
+
+elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/invoices/(\d+)/payments$#',
+        $path,
+        $m
+    )
+)
+    $invoicePayment->list(
+        (int)$m[1]
+    );
+
+elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/invoice-payments/(\d+)$#',
+        $path,
+        $m
+    )
+)
+    $invoicePayment->get(
+        (int)$m[1]
+    );
+
+elseif(
+    $method === 'DELETE' &&
+    preg_match(
+        '#^/api/invoice-payments/(\d+)$#',
+        $path,
+        $m
+    )
+)
+    $invoicePayment->delete(
+        (int)$m[1]
+    );
  elseif($method==='GET'&&$path==='/api/yards')$yard->list();
  elseif($method==='POST'&&$path==='/api/yards')$yard->add();
  elseif($method==='GET'&&preg_match('#^/api/yards/(\d+)$#',$path,$m))$yard->get($m[1]);
