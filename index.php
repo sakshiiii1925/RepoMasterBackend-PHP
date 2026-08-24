@@ -3,6 +3,8 @@
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/helpers/response.php';
+require_once __DIR__ .
+    '/services/RepoImageService.php';
 require_once __DIR__ . '/services/UserService.php';
 require_once __DIR__ . '/services/VehicleService.php';
 require_once __DIR__ . '/services/InvoiceService.php';
@@ -11,6 +13,8 @@ require_once __DIR__ . '/services/SearchHistoryService.php';
 require_once __DIR__ . '/services/ReportService.php';
 require_once __DIR__ . '/services/ExcelService.php';
 require_once __DIR__ . '/services/ExcelReportService.php';
+require_once __DIR__ .
+    '/controllers/RepoImageController.php';
 require_once __DIR__ . '/controllers/UserController.php';
 require_once __DIR__ . '/controllers/VehicleController.php';
 require_once __DIR__ . '/controllers/InvoiceController.php';
@@ -46,6 +50,10 @@ $yard=new YardController(new YardService($pdo));
 $history=new SearchHistoryController(new SearchHistoryService($pdo));
 $report=new ReportController(new ReportService($pdo),new ExcelReportService());
 $excel=new ExcelController();
+$repoImage =
+new RepoImageController(
+    new RepoImageService($pdo)
+);
 
 $method=$_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -84,6 +92,17 @@ try {
  elseif($method==='GET'&&$path==='/api/vehicles/search')$vehicle->search();
  elseif($method==='GET'&&preg_match('#^/api/vehicles/yard/(\d+)$#',$path,$m))$vehicle->yard($m[1]);
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/status$#',$path,$m))$vehicle->status($m[1]);
+ elseif(
+    $method === 'POST' &&
+    preg_match(
+        '#^/api/vehicles/([^/]+)/repo-images$#',
+        $path,
+        $m
+    )
+)
+    $repoImage->upload(
+        $m[1]
+    );
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/assign-yard$#',$path,$m))$vehicle->assign($m[1]);
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/remove-yard$#',$path,$m))$vehicle->removeYard($m[1]);
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)$#',$path,$m))$vehicle->update($m[1]);
