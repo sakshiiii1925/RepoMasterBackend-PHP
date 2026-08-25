@@ -103,6 +103,34 @@ try {
     $repoImage->upload(
         $m[1]
     );
+    elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/repo-images'
+)
+    $repoImage->listUploadedImages();
+
+elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/admin/repo-images/(\d+)$#',
+        $path,
+        $m
+    )
+)
+    $repoImage->getUploadedImage(
+        (int)$m[1]
+    );
+    elseif(
+    $method === 'DELETE' &&
+    preg_match(
+        '#^/api/admin/repo-images/(\d+)$#',
+        $path,
+        $m
+    )
+)
+    $repoImage->deleteUploadedImages(
+        (int)$m[1]
+    );
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/assign-yard$#',$path,$m))$vehicle->assign($m[1]);
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/remove-yard$#',$path,$m))$vehicle->removeYard($m[1]);
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)$#',$path,$m))$vehicle->update($m[1]);

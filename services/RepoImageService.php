@@ -435,6 +435,91 @@ class RepoImageService
             ]
         ];
     }
+    /*
+|--------------------------------------------------------------------------
+| Get all uploaded image records
+|--------------------------------------------------------------------------
+*/
+
+public function getUploadedImages(): array
+{
+    $sql = "
+        SELECT
+            id,
+            vehicle_number,
+            user_id,
+            user_name,
+            user_email,
+            status,
+            created_at,
+            updated_at,
+            uploaded_at
+        FROM vehicle_repo_images
+        ORDER BY created_at DESC
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute();
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Get uploaded images by ID
+|--------------------------------------------------------------------------
+*/
+
+public function getUploadedImageById(
+    int $id
+): ?array {
+
+    $sql = "
+        SELECT
+            id,
+            vehicle_number,
+            user_id,
+            user_name,
+            user_email,
+            status,
+
+            inventory_image_1,
+            inventory_image_2,
+
+            vehicle_image_1,
+            vehicle_image_2,
+            vehicle_image_3,
+            vehicle_image_4,
+            vehicle_image_5,
+
+            created_at,
+            updated_at,
+            uploaded_at
+
+        FROM vehicle_repo_images
+
+        WHERE id = :id
+
+        LIMIT 1
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute([
+        ':id' => $id
+    ]);
+
+    $result =
+        $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$result) {
+        return null;
+    }
+
+    return $result;
+}
 
 
     /*
@@ -578,4 +663,198 @@ class RepoImageService
 
         return $fileName;
     }
+    /*
+|--------------------------------------------------------------------------
+| Admin: Get uploaded image list
+|--------------------------------------------------------------------------
+*/
+
+public function getUploadedImageList(): array
+{
+    $sql = "
+        SELECT
+            id,
+            vehicle_number,
+            user_id,
+            user_name,
+            user_email,
+            status,
+            created_at,
+            updated_at,
+            uploaded_at
+        FROM vehicle_repo_images
+        ORDER BY created_at DESC
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute();
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Admin: Get uploaded images by ID
+|--------------------------------------------------------------------------
+*/
+
+public function getUploadedImagesById(
+    int $id
+): ?array {
+
+    $sql = "
+        SELECT
+            id,
+            vehicle_number,
+            user_id,
+            user_name,
+            user_email,
+            status,
+
+            inventory_image_1,
+            inventory_image_2,
+
+            vehicle_image_1,
+            vehicle_image_2,
+            vehicle_image_3,
+            vehicle_image_4,
+            vehicle_image_5,
+
+            created_at,
+            updated_at,
+            uploaded_at
+
+        FROM vehicle_repo_images
+
+        WHERE id = :id
+
+        LIMIT 1
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute([
+        ':id' => $id
+    ]);
+
+    $result =
+        $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $result ?: null;
+}
+/*
+|--------------------------------------------------------------------------
+| Admin: Delete uploaded image record
+|--------------------------------------------------------------------------
+*/
+
+public function deleteUploadedImages(
+    int $id
+): bool {
+
+    /*
+    |--------------------------------------------------------------------------
+    | Get image paths first
+    |--------------------------------------------------------------------------
+    */
+
+    $sql = "
+        SELECT
+            inventory_image_1,
+            inventory_image_2,
+            vehicle_image_1,
+            vehicle_image_2,
+            vehicle_image_3,
+            vehicle_image_4,
+            vehicle_image_5
+        FROM vehicle_repo_images
+        WHERE id = :id
+        LIMIT 1
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute([
+        ':id' => $id
+    ]);
+
+    $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$record) {
+        return false;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Delete database record
+    |--------------------------------------------------------------------------
+    */
+
+    $delete = $this->pdo->prepare("
+        DELETE FROM vehicle_repo_images
+        WHERE id = :id
+    ");
+
+    $delete->execute([
+        ':id' => $id
+    ]);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Delete physical image files
+    |--------------------------------------------------------------------------
+    */
+
+    $imageColumns = [
+        'inventory_image_1',
+        'inventory_image_2',
+        'vehicle_image_1',
+        'vehicle_image_2',
+        'vehicle_image_3',
+        'vehicle_image_4',
+        'vehicle_image_5'
+    ];
+
+
+    foreach ($imageColumns as $column) {
+
+        $relativePath = $record[$column] ?? '';
+
+        if ($relativePath === '') {
+            continue;
+        }
+
+
+        /*
+        | Path stored in DB:
+        |
+        | uploads/vehicles/MH12CD6666/image.jpg
+        |
+        */
+
+        $filePath =
+            dirname(__DIR__) .
+            '/' .
+            $relativePath;
+
+
+        if (file_exists($filePath)) {
+
+            unlink($filePath);
+        }
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Remove empty vehicle upload directory
+    |--------------------------------------------------------------------------
+    */
+
+    return true;
+}
 }
