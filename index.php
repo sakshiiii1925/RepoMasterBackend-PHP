@@ -5,6 +5,11 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/helpers/response.php';
 require_once __DIR__ .
     '/services/RepoImageService.php';
+    require_once __DIR__ .
+    '/services/AdminNotificationService.php';
+
+require_once __DIR__ .
+    '/controllers/AdminNotificationController.php';
 require_once __DIR__ . '/services/UserService.php';
 require_once __DIR__ . '/services/VehicleService.php';
 require_once __DIR__ . '/services/InvoiceService.php';
@@ -36,10 +41,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 $pdo=db();
 $user=new UserController(
     new UserService($pdo));
-$vehicle=
+$adminNotificationService =
+    new AdminNotificationService($pdo);
+
+$adminNotification =
+    new AdminNotificationController(
+        $adminNotificationService
+    );
+
+$vehicle =
 new VehicleController(
-    new VehicleService($pdo),new ExcelService($pdo));
-$invoice=
+    new VehicleService(
+        $pdo,
+        $adminNotificationService
+    ),
+    new ExcelService($pdo)
+);
+    $invoice=
 new InvoiceController(
     new InvoiceService($pdo));
 $invoicePayment =
@@ -212,6 +230,46 @@ elseif(
  elseif($method==='GET'&&preg_match('#^/api/reports/finance/excel/([^/]+)$#',$path,$m))$report->financeExcel($m[1]);
  elseif($method==='GET'&&preg_match('#^/api/reports/user-activity/excel/([^/]+)$#',$path,$m))$report->activityExcel($m[1]);
  elseif($method==='GET'&&preg_match('#^/api/reports/monthly/excel/([^/]+)$#',$path,$m))$report->monthlyExcel($m[1]);
+ 
+
+// ===============================
+// ADMIN NOTIFICATIONS
+// ===============================
+
+elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/notifications'
+)
+    $adminNotification->list();
+
+elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/notifications/unread-count'
+)
+    $adminNotification->unreadCount();
+
+elseif(
+    $method === 'PUT' &&
+    preg_match(
+        '#^/api/admin/notifications/(\d+)/read$#',
+        $path,
+        $m
+    )
+)
+    $adminNotification->markRead(
+        (int)$m[1]
+    );
+
+elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/reports/yard/excel/(\d+)$#',
+        $path,
+        $m
+    )
+)
+    $report->yardExcel($m[1]);
+
  elseif($method==='GET'&&preg_match('#^/api/reports/yard/excel/(\d+)$#',$path,$m))$report->yardExcel($m[1]);
  else errorResponse('API endpoint not found',404);
 } catch(Throwable $e) { errorResponse($e->getMessage(),500); }

@@ -1,10 +1,15 @@
 <?php
 
-require_once __DIR__ . '/../helpers/mappers.php';
 
+
+require_once __DIR__ . '/../helpers/mappers.php';
+require_once __DIR__ . '/AdminNotificationService.php';
 class VehicleService
 {
-    public function __construct(private PDO $pdo) {}
+   public function __construct(
+    private PDO $pdo,
+    private AdminNotificationService $notificationService
+) {}
 
     private function baseSelect(): string
     {
@@ -19,7 +24,66 @@ class VehicleService
     }
 
     public function getVehicle(string $keyword): ?array { $r=$this->findVehicleRow($keyword); return $r ? vehicleRow($r) : null; }
-    public function updateStatus(string $keyword,string $status): ?array { $r=$this->findVehicleRow($keyword); if(!$r) return null; $s=$this->pdo->prepare('UPDATE vehicle SET repo_status=? WHERE repo_year=? AND repo_month=? AND loan_number=?'); $s->execute([$status,$r['repo_year'],$r['repo_month'],$r['loan_number']]); return vehicleRow($this->findVehicleRow($keyword)); }
+ public function updateStatus(
+    string $keyword,
+    string $status,
+    string $userName = '',
+    string $userEmail = ''
+): ?array {
+
+    // 1. Find vehicle
+    $r = $this->findVehicleRow($keyword);
+
+    if (!$r) {
+        return null;
+    }
+
+    // 2. Update vehicle status
+    $s = $this->pdo->prepare(
+        'UPDATE vehicle
+         SET repo_status=?
+         WHERE repo_year=?
+         AND repo_month=?
+         AND loan_number=?'
+    );
+
+    $s->execute([
+        $status,
+        $r['repo_year'],
+        $r['repo_month'],
+        $r['loan_number']
+    ]);
+
+    // 3. Create notification only for Repo Mark
+    //    and Parked in Godown
+    if (
+        $status === 'repo mark' ||
+        $status === 'Parked'
+    ) {
+
+        $agencyId = (string)($r['agency_id'] ?? '');
+        $vehicleNumber = (string)($r['vehicle_number'] ?? '');
+
+        if (
+            $agencyId !== '' &&
+            $vehicleNumber !== ''
+        ) {
+
+            $this->notificationService->createNotification(
+                $agencyId,
+                $vehicleNumber,
+                $status,
+                $userName,
+                $userEmail
+            );
+        }
+    }
+
+    // 4. Return updated vehicle
+    return vehicleRow(
+        $this->findVehicleRow($keyword)
+    );
+}
 
     private function vehicleData(array $v): array
     {

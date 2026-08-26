@@ -32,3 +32,16 @@ function cleanOptional(mixed $value): ?string
     $value = trim((string)$value);
     return $value === '' ? null : $value;
 }
+function successResponse($data = null, int $status = 200): void
+{
+    http_response_code($status);
+
+    header('Content-Type: application/json');
+
+    echo json_encode([
+        'success' => true,
+        'data' => $data
+    ]);
+
+    exit;
+}
