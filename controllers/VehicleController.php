@@ -12,15 +12,22 @@ class VehicleController {
     $status = (string)($b['status'] ?? '');
     $userName = (string)($b['userName'] ?? '');
     $userEmail = (string)($b['userEmail'] ?? '');
+    $userId = (int)($b['userId'] ?? 0);
 
     if ($status === '') {
         errorResponse('Status is required', 400);
         return;
     }
 
+    if ($userId <= 0) {
+        errorResponse('User ID is required', 400);
+        return;
+    }
+
     $r = $this->s->updateStatus(
         $k,
         $status,
+        $userId,
         $userName,
         $userEmail
     );

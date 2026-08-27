@@ -24,11 +24,13 @@ class VehicleService
     }
 
     public function getVehicle(string $keyword): ?array { $r=$this->findVehicleRow($keyword); return $r ? vehicleRow($r) : null; }
- public function updateStatus(
+ 
+public function updateStatus(
     string $keyword,
     string $status,
     string $userName = '',
-    string $userEmail = ''
+    string $userEmail = '',
+    int $userId = 0
 ): ?array {
 
     // 1. Find vehicle
@@ -38,27 +40,91 @@ class VehicleService
         return null;
     }
 
-    // 2. Update vehicle status
-    $s = $this->pdo->prepare(
-        'UPDATE vehicle
-         SET repo_status=?
-         WHERE repo_year=?
-         AND repo_month=?
-         AND loan_number=?'
-    );
+    // Vehicle primary key
+    $year = $r['repo_year'];
+    $month = $r['repo_month'];
+    $loan = $r['loan_number'];
 
-    $s->execute([
+    // Normalize status
+    $status = trim($status);
+
+    /*
+     * IMPORTANT:
+     * userId should come from the logged-in Android user.
+     *
+     * If userId is available, save the ID.
+     * Otherwise keep NULL.
+     */
+    $savedUserId = $userId > 0 ? $userId : null;
+
+    // 2. Update vehicle status
+    $sql = "
+        UPDATE vehicle
+        SET repo_status = ?
+        WHERE repo_year = ?
+          AND repo_month = ?
+          AND loan_number = ?
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute([
         $status,
-        $r['repo_year'],
-        $r['repo_month'],
-        $r['loan_number']
+        $year,
+        $month,
+        $loan
     ]);
 
-    // 3. Create notification only for Repo Mark
-    //    and Parked in Godown
+    // 3. Repo Mark
+    if (strcasecmp($status, 'repo mark') === 0) {
+
+        $sql = "
+            UPDATE vehicle
+            SET
+                repo_marked_by = ?,
+                repo_marked_at = NOW()
+            WHERE repo_year = ?
+              AND repo_month = ?
+              AND loan_number = ?
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+
+        $stmt->execute([
+            $savedUserId,
+            $year,
+            $month,
+            $loan
+        ]);
+    }
+
+    // 4. Parked
+    if (strcasecmp($status, 'Parked') === 0) {
+
+        $sql = "
+            UPDATE vehicle
+            SET
+                parked_by = ?,
+                parked_at = NOW()
+            WHERE repo_year = ?
+              AND repo_month = ?
+              AND loan_number = ?
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+
+        $stmt->execute([
+            $savedUserId,
+            $year,
+            $month,
+            $loan
+        ]);
+    }
+
+    // 5. Admin notification
     if (
-        $status === 'repo mark' ||
-        $status === 'Parked'
+        strcasecmp($status, 'repo mark') === 0 ||
+        strcasecmp($status, 'Parked') === 0
     ) {
 
         $agencyId = (string)($r['agency_id'] ?? '');
@@ -79,11 +145,15 @@ class VehicleService
         }
     }
 
-    // 4. Return updated vehicle
-    return vehicleRow(
-        $this->findVehicleRow($keyword)
-    );
+    // 6. Get latest vehicle data
+    $updatedVehicle = $this->findVehicleRow($keyword);
+
+    return $updatedVehicle
+        ? vehicleRow($updatedVehicle)
+        : null;
 }
+   
+
 
     private function vehicleData(array $v): array
     {

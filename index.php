@@ -20,6 +20,7 @@ require_once __DIR__ . '/services/ExcelService.php';
 require_once __DIR__ . '/services/ExcelReportService.php';
 require_once __DIR__ .
     '/controllers/RepoImageController.php';
+require_once __DIR__ . '/controllers/AdminPaymentController.php';
 require_once __DIR__ . '/controllers/UserController.php';
 require_once __DIR__ . '/controllers/VehicleController.php';
 require_once __DIR__ . '/controllers/InvoiceController.php';
@@ -64,6 +65,8 @@ $invoicePayment =
 new InvoicePaymentController(
         new InvoicePaymentService($pdo)
     );
+    $adminPayment =
+new AdminPaymentController($pdo);
 $yard=new YardController(new YardService($pdo));
 $history=new SearchHistoryController(new SearchHistoryService($pdo));
 $report=new ReportController(new ReportService($pdo),new ExcelReportService());
@@ -271,5 +274,16 @@ elseif(
     $report->yardExcel($m[1]);
 
  elseif($method==='GET'&&preg_match('#^/api/reports/yard/excel/(\d+)$#',$path,$m))$report->yardExcel($m[1]);
+elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/payment/users'
+)
+    $adminPayment->users();
+
+elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/payment/user-vehicles'
+)
+    $adminPayment->userVehicles();
  else errorResponse('API endpoint not found',404);
 } catch(Throwable $e) { errorResponse($e->getMessage(),500); }
