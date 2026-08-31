@@ -9,10 +9,10 @@ class VehicleController {
 {
     $b = requestBody();
 
-    $status = (string)($b['status'] ?? '');
-    $userName = (string)($b['userName'] ?? '');
-    $userEmail = (string)($b['userEmail'] ?? '');
+    $status = trim((string)($b['status'] ?? ''));
     $userId = (int)($b['userId'] ?? 0);
+    $userName = trim((string)($b['userName'] ?? ''));
+    $userEmail = trim((string)($b['userEmail'] ?? ''));
 
     if ($status === '') {
         errorResponse('Status is required', 400);
@@ -20,7 +20,7 @@ class VehicleController {
     }
 
     if ($userId <= 0) {
-        errorResponse('User ID is required', 400);
+        errorResponse('userId is required', 400);
         return;
     }
 
