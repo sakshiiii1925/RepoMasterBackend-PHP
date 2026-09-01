@@ -28,9 +28,9 @@ class VehicleService
 public function updateStatus(
     string $keyword,
     string $status,
+    int $userId = 0,
     string $userName = '',
-    string $userEmail = '',
-    int $userId = 0
+    string $userEmail = ''
 ): ?array {
 
     // 1. Find vehicle

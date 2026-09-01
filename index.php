@@ -10,6 +10,7 @@ require_once __DIR__ .
 
 require_once __DIR__ .
     '/controllers/AdminNotificationController.php';
+require_once __DIR__ . '/services/AdminPaymentService.php';
 require_once __DIR__ . '/services/UserService.php';
 require_once __DIR__ . '/services/VehicleService.php';
 require_once __DIR__ . '/services/InvoiceService.php';
@@ -65,8 +66,11 @@ $invoicePayment =
 new InvoicePaymentController(
         new InvoicePaymentService($pdo)
     );
-    $adminPayment =
-new AdminPaymentController($pdo);
+   $adminPayment =
+    new AdminPaymentController(
+        $pdo,
+        new AdminPaymentService($pdo)
+    );
 $yard=new YardController(new YardService($pdo));
 $history=new SearchHistoryController(new SearchHistoryService($pdo));
 $report=new ReportController(new ReportService($pdo),new ExcelReportService());
@@ -285,5 +289,43 @@ elseif(
     $path === '/api/admin/payment/user-vehicles'
 )
     $adminPayment->userVehicles();
+    elseif(
+    $method === 'POST' &&
+    $path === '/api/admin/payment'
+)
+    $adminPayment->createPayment();
+    elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/payment/rates'
+)
+    $adminPayment->rates();
+
+elseif(
+    $method === 'POST' &&
+    $path === '/api/admin/payment/rates'
+)
+    $adminPayment->saveRate();
+
+elseif(
+    $method === 'DELETE' &&
+    preg_match(
+        '#^/api/admin/payment/rates/(\d+)$#',
+        $path,
+        $m
+    )
+)
+    $adminPayment->deleteRate(
+        (int)$m[1]
+    );
+    elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/payment/calculate'
+)
+    $adminPayment->calculate();
+    elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/payment/summary'
+)
+    $adminPayment->summary();
  else errorResponse('API endpoint not found',404);
 } catch(Throwable $e) { errorResponse($e->getMessage(),500); }

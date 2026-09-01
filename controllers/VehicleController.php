@@ -39,6 +39,7 @@ class VehicleController {
 
     jsonResponse($r);
 }
+
  public function delete($k){$this->s->deleteVehicle($k);jsonResponse('Vehicle Deleted Successfully');}
  public function bulk(){jsonResponse($this->s->addAllVehicles(requestBody()));}
  public function search(){jsonResponse($this->s->searchVehicleNumbers((string)queryParam('keyword','')));}
