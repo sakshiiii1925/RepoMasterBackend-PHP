@@ -275,121 +275,156 @@ class AdminPaymentService
         );
     }
 
+// ==========================================
+// GET ALREADY PAID AMOUNT
+// ==========================================
 
-    // ==========================================
-    // DUPLICATE PAYMENT CHECK
-    // ==========================================
+$paidStmt = $this->pdo->prepare("
+    SELECT
+        COALESCE(SUM(amount), 0)
+    FROM admin_payment
+    WHERE user_id = ?
+      AND repo_year = ?
+      AND repo_month = ?
+      AND loan_number = ?
+      AND LOWER(TRIM(repo_status)) =
+          LOWER(TRIM(?))
+");
 
-    $duplicateStmt = $this->pdo->prepare("
-        SELECT
-            id,
+$paidStmt->execute([
+    $userId,
+    $vehicle['repo_year'],
+    $vehicle['repo_month'],
+    $vehicle['loan_number'],
+    $workType
+]);
+
+$paidAmount =
+    (float)$paidStmt->fetchColumn();
+
+
+// ==========================================
+// CALCULATE REMAINING
+// ==========================================
+
+$remainingAmount =
+    $amount - $paidAmount;
+
+if ($remainingAmount < 0) {
+    $remainingAmount = 0;
+}
+
+
+// ==========================================
+// CHECK FULLY PAID
+// ==========================================
+
+if ($remainingAmount <= 0) {
+
+    throw new RuntimeException(
+        'This work has already been fully paid for vehicle '
+        . $vehicle['vehicle_number']
+    );
+}
+   
+
+// ==========================================
+// VALIDATE PAYMENT AMOUNT
+// ==========================================
+
+$paymentAmount = isset($data['payment_amount'])
+    ? (float)$data['payment_amount']
+    : $remainingAmount;
+
+if ($paymentAmount <= 0) {
+    throw new InvalidArgumentException(
+        'payment_amount must be greater than 0'
+    );
+}
+
+if ($paymentAmount > $remainingAmount) {
+    throw new InvalidArgumentException(
+        'Payment amount cannot be greater than remaining amount: '
+        . number_format($remainingAmount, 2)
+    );
+}
+
+
+// ==========================================
+// INSERT PAYMENT
+// ==========================================
+
+if ($paymentDate !== '') {
+
+    $sql = "
+        INSERT INTO admin_payment (
+            user_id,
+            repo_year,
+            repo_month,
+            loan_number,
+            vehicle_number,
+            vehicle_type,
+            repo_status,
             amount,
             payment_method,
-            payment_date
-        FROM admin_payment
-        WHERE user_id = ?
-          AND repo_year = ?
-          AND repo_month = ?
-          AND loan_number = ?
-          AND LOWER(TRIM(repo_status)) =
-              LOWER(TRIM(?))
-        LIMIT 1
-    ");
+            payment_date,
+            remarks
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ";
 
-    $duplicateStmt->execute([
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute([
         $userId,
         $vehicle['repo_year'],
         $vehicle['repo_month'],
         $vehicle['loan_number'],
-        $workType
+        $vehicle['vehicle_number'],
+        $vehicleType,
+        $workType,
+        $paymentAmount,
+        $paymentMethod,
+        $paymentDate,
+        $remarks !== '' ? $remarks : null
     ]);
 
-    $existingPayment =
-        $duplicateStmt->fetch(PDO::FETCH_ASSOC);
+} else {
 
-    if ($existingPayment) {
+    $sql = "
+        INSERT INTO admin_payment (
+            user_id,
+            repo_year,
+            repo_month,
+            loan_number,
+            vehicle_number,
+            vehicle_type,
+            repo_status,
+            amount,
+            payment_method,
+            payment_date,
+            remarks
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+    ";
 
-        throw new RuntimeException(
-            'Payment already created for '
-            . $workType
-            . ' for vehicle '
-            . $vehicle['vehicle_number']
-        );
-    }
+    $stmt = $this->pdo->prepare($sql);
 
-
-    // ==========================================
-    // INSERT PAYMENT
-    // ==========================================
-
-    if ($paymentDate !== '') {
-
-        $sql = "
-            INSERT INTO admin_payment (
-                user_id,
-                repo_year,
-                repo_month,
-                loan_number,
-                vehicle_number,
-                vehicle_type,
-                repo_status,
-                amount,
-                payment_method,
-                payment_date,
-                remarks
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ";
-
-        $stmt = $this->pdo->prepare($sql);
-
-        $stmt->execute([
-            $userId,
-            $vehicle['repo_year'],
-            $vehicle['repo_month'],
-            $vehicle['loan_number'],
-            $vehicle['vehicle_number'],
-            $vehicleType,
-            $workType,
-            $amount,
-            $paymentMethod,
-            $paymentDate,
-            $remarks !== '' ? $remarks : null
-        ]);
-
-    } else {
-
-        $sql = "
-            INSERT INTO admin_payment (
-                user_id,
-                repo_year,
-                repo_month,
-                loan_number,
-                vehicle_number,
-                vehicle_type,
-                repo_status,
-                amount,
-                payment_method,
-                remarks
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ";
-
-        $stmt = $this->pdo->prepare($sql);
-
-        $stmt->execute([
-            $userId,
-            $vehicle['repo_year'],
-            $vehicle['repo_month'],
-            $vehicle['loan_number'],
-            $vehicle['vehicle_number'],
-            $vehicleType,
-            $workType,
-            $amount,
-            $paymentMethod,
-            $remarks !== '' ? $remarks : null
-        ]);
-    }
+    $stmt->execute([
+        $userId,
+        $vehicle['repo_year'],
+        $vehicle['repo_month'],
+        $vehicle['loan_number'],
+        $vehicle['vehicle_number'],
+        $vehicleType,
+        $workType,
+        $paymentAmount,
+        $paymentMethod,
+        $remarks !== '' ? $remarks : null
+    ]);
+}
+    
+ 
 
 
     // ==========================================
@@ -1161,13 +1196,194 @@ public function calculateVehiclePayment(
     ];
 }
     
-  
+  public function getUserPaymentHistory(int $userId): array
+{
+    $sql = "
+        SELECT
+            id,
+            user_id,
+            repo_year,
+            repo_month,
+            loan_number,
+            vehicle_number,
+            vehicle_type,
+            repo_status,
+            amount,
+            payment_method,
+            payment_date,
+            remarks,
+            created_at,
+            updated_at
+        FROM admin_payment
+        WHERE user_id = ?
+        ORDER BY payment_date DESC, id DESC
+    ";
 
-  
-    
-   
-   
-     
+    $stmt = $this->pdo->prepare($sql);
+    $stmt->execute([$userId]);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+public function getMyPaymentHistory(int $userId): array
+{
+    $sql = "
+        SELECT
+            id,
+            user_id,
+            repo_year,
+            repo_month,
+            loan_number,
+            vehicle_number,
+            vehicle_type,
+            repo_status,
+            amount,
+            payment_method,
+            payment_date,
+            remarks,
+            created_at,
+            updated_at
+        FROM admin_payment
+        WHERE user_id = ?
+        ORDER BY payment_date DESC, id DESC
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+    $stmt->execute([$userId]);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+public function getMyPaymentSummary(int $userId): array
+{
+    /*
+     * Calculate total amount that this user should receive
+     * from completed Repo Mark and Parked work.
+     */
+
+    $workSql = "
+        SELECT
+            v.repo_year,
+            v.repo_month,
+            v.loan_number,
+            v.vehicle_number,
+            v.vehicle_type,
+            v.agency_id,
+            'Repo Mark' AS work_type
+        FROM vehicle v
+        WHERE v.repo_marked_by = ?
+
+        UNION ALL
+
+        SELECT
+            v.repo_year,
+            v.repo_month,
+            v.loan_number,
+            v.vehicle_number,
+            v.vehicle_type,
+            v.agency_id,
+            'Parked' AS work_type
+        FROM vehicle v
+        WHERE v.parked_by = ?
+    ";
+
+    $stmt = $this->pdo->prepare($workSql);
+    $stmt->execute([
+        $userId,
+        $userId
+    ]);
+
+    $works = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $totalDue = 0.0;
+
+    foreach ($works as $work) {
+
+        $rateColumn =
+            $work['work_type'] === 'Repo Mark'
+                ? 'repo_mark_rate'
+                : 'parked_rate';
+
+        $rateSql = "
+            SELECT {$rateColumn}
+            FROM payment_rates
+            WHERE agency_id = ?
+              AND UPPER(vehicle_type) = UPPER(?)
+            LIMIT 1
+        ";
+
+        $rateStmt =
+            $this->pdo->prepare($rateSql);
+
+        $rateStmt->execute([
+            $work['agency_id'],
+            $work['vehicle_type']
+        ]);
+
+        $rate =
+            $rateStmt->fetchColumn();
+
+        if ($rate !== false) {
+            $totalDue += (float)$rate;
+        }
+    }
+
+    /*
+     * Total payments already made.
+     */
+
+    $paidSql = "
+        SELECT COALESCE(SUM(amount), 0)
+        FROM admin_payment
+        WHERE user_id = ?
+    ";
+
+    $paidStmt =
+        $this->pdo->prepare($paidSql);
+
+    $paidStmt->execute([
+        $userId
+    ]);
+
+    $totalPaid =
+        (float)$paidStmt->fetchColumn();
+
+    $remaining =
+        max(
+            0,
+            $totalDue - $totalPaid
+        );
+
+    return [
+        'user_id' =>
+            $userId,
+
+        'completed_work' =>
+            count($works),
+
+        'total_due' =>
+            number_format(
+                $totalDue,
+                2,
+                '.',
+                ''
+            ),
+
+        'total_paid' =>
+            number_format(
+                $totalPaid,
+                2,
+                '.',
+                ''
+            ),
+
+        'remaining' =>
+            number_format(
+                $remaining,
+                2,
+                '.',
+                ''
+            )
+    ];
+} 
 
 }
 

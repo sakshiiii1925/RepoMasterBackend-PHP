@@ -52,47 +52,187 @@ class UserService
         return userRow($this->findById((int)$this->pdo->lastInsertId()));
     }
 
-    public function login(array $r): array
-    {
-        $u = $this->findByEmail((string)($r['email'] ?? ''));
-        if (!$u) return ['success'=>false,'message'=>'Invalid Email or Password','role'=>null,'status'=>null,'fullName'=>null,'email'=>null,'agencyId'=>null];
+   public function login(array $r): array
+{
+    $u = $this->findByEmail((string)($r['email'] ?? ''));
 
-        $lockDuration = 60000;
-        $failed = (int)$u['failed_attempts'];
-        $lockTime = $u['lock_time'] !== null ? (int)$u['lock_time'] : null;
-        if ($failed >= 3 && $lockTime !== null) {
-            $elapsed = (int)(microtime(true) * 1000) - $lockTime;
-            if ($elapsed < $lockDuration) {
-                $remaining = max(0, (int)(($lockDuration - $elapsed) / 1000));
-                return ['success'=>false,'message'=>'Account locked. Try again in '.$remaining.' seconds.','role'=>null,'status'=>null,'fullName'=>null,'email'=>null,'agencyId'=>null];
-            }
-            $s = $this->pdo->prepare('UPDATE users SET failed_attempts=0, lock_time=NULL WHERE id=?');
-            $s->execute([$u['id']]);
-            $u['failed_attempts'] = 0;
-            $u['lock_time'] = null;
-        }
-
-        if (!password_verify((string)($r['password'] ?? ''), $u['password'])) {
-            $failed = (int)$u['failed_attempts'] + 1;
-            if ($failed >= 3) {
-                $now = (int)(microtime(true) * 1000);
-                $s = $this->pdo->prepare('UPDATE users SET failed_attempts=?, lock_time=? WHERE id=?');
-                $s->execute([$failed,$now,$u['id']]);
-                return ['success'=>false,'message'=>'Account locked. Try again in 60 seconds.','role'=>null,'status'=>null,'fullName'=>null,'email'=>null,'agencyId'=>null];
-            }
-            $s = $this->pdo->prepare('UPDATE users SET failed_attempts=? WHERE id=?');
-            $s->execute([$failed,$u['id']]);
-            return ['success'=>false,'message'=>'Invalid password. '.(3-$failed).' attempt(s) remaining.','role'=>null,'status'=>null,'fullName'=>null,'email'=>null,'agencyId'=>null];
-        }
-
-        if ($u['role'] === 'USER' && $u['status'] === 'PENDING') {
-            return ['success'=>false,'message'=>'Waiting for Admin Approval','role'=>$u['role'],'status'=>$u['status'],'fullName'=>$u['full_name'],'email'=>$u['email'],'agencyId'=>$u['agency_id']];
-        }
-
-        $s = $this->pdo->prepare('UPDATE users SET failed_attempts=0, lock_time=NULL WHERE id=?');
-        $s->execute([$u['id']]);
-        return ['success'=>true,'message'=>'Login Successful','role'=>$u['role'],'status'=>$u['status'],'fullName'=>$u['full_name'],'email'=>$u['email'],'agencyId'=>$u['agency_id']];
+    if (!$u) {
+        return [
+            'success' => false,
+            'message' => 'Invalid Email or Password',
+            'id' => null,
+            'role' => null,
+            'status' => null,
+            'fullName' => null,
+            'email' => null,
+            'agencyId' => null
+        ];
     }
+
+    $lockDuration = 60000;
+
+    $failed = (int)$u['failed_attempts'];
+
+    $lockTime =
+        $u['lock_time'] !== null
+            ? (int)$u['lock_time']
+            : null;
+
+    // Check account lock
+    if ($failed >= 3 && $lockTime !== null) {
+
+        $elapsed =
+            (int)(microtime(true) * 1000) - $lockTime;
+
+        if ($elapsed < $lockDuration) {
+
+            $remaining =
+                max(
+                    0,
+                    (int)(($lockDuration - $elapsed) / 1000)
+                );
+
+            return [
+                'success' => false,
+                'message' =>
+                    'Account locked. Try again in '
+                    . $remaining
+                    . ' seconds.',
+                'id' => null,
+                'role' => null,
+                'status' => null,
+                'fullName' => null,
+                'email' => null,
+                'agencyId' => null
+            ];
+        }
+
+        $s = $this->pdo->prepare(
+            'UPDATE users
+             SET failed_attempts = 0,
+                 lock_time = NULL
+             WHERE id = ?'
+        );
+
+        $s->execute([$u['id']]);
+
+        $u['failed_attempts'] = 0;
+        $u['lock_time'] = null;
+    }
+
+    // Check password
+    if (
+        !password_verify(
+            (string)($r['password'] ?? ''),
+            $u['password']
+        )
+    ) {
+
+        $failed =
+            (int)$u['failed_attempts'] + 1;
+
+        // Lock after 3 failed attempts
+        if ($failed >= 3) {
+
+            $now =
+                (int)(microtime(true) * 1000);
+
+            $s = $this->pdo->prepare(
+                'UPDATE users
+                 SET failed_attempts = ?,
+                     lock_time = ?
+                 WHERE id = ?'
+            );
+
+            $s->execute([
+                $failed,
+                $now,
+                $u['id']
+            ]);
+
+            return [
+                'success' => false,
+                'message' =>
+                    'Account locked. Try again in 60 seconds.',
+                'id' => null,
+                'role' => null,
+                'status' => null,
+                'fullName' => null,
+                'email' => null,
+                'agencyId' => null
+            ];
+        }
+
+        $s = $this->pdo->prepare(
+            'UPDATE users
+             SET failed_attempts = ?
+             WHERE id = ?'
+        );
+
+        $s->execute([
+            $failed,
+            $u['id']
+        ]);
+
+        return [
+            'success' => false,
+            'message' =>
+                'Invalid password. '
+                . (3 - $failed)
+                . ' attempt(s) remaining.',
+            'id' => null,
+            'role' => null,
+            'status' => null,
+            'fullName' => null,
+            'email' => null,
+            'agencyId' => null
+        ];
+    }
+
+    // User waiting for admin approval
+    if (
+        $u['role'] === 'USER' &&
+        $u['status'] === 'PENDING'
+    ) {
+
+        return [
+            'success' => false,
+            'message' => 'Waiting for Admin Approval',
+            'id' => (int)$u['id'],
+            'role' => $u['role'],
+            'status' => $u['status'],
+            'fullName' => $u['full_name'],
+            'email' => $u['email'],
+            'agencyId' => $u['agency_id']
+        ];
+    }
+
+    // Reset failed login information
+    $s = $this->pdo->prepare(
+        'UPDATE users
+         SET failed_attempts = 0,
+             lock_time = NULL
+         WHERE id = ?'
+    );
+
+    $s->execute([$u['id']]);
+
+    // Successful login
+    return [
+        'success' => true,
+        'message' => 'Login Successful',
+
+        // IMPORTANT
+        'id' => (int)$u['id'],
+
+        'role' => $u['role'],
+        'status' => $u['status'],
+        'fullName' => $u['full_name'],
+        'email' => $u['email'],
+        'agencyId' => $u['agency_id']
+    ];
+}
+       
 
     public function getPendingUsers(string $agencyId): array { return $this->listUsers('agency_id = ? AND status = ?', [$agencyId,'PENDING']); }
     public function approveUser(int $id): array { return $this->setStatus($id,'ACTIVE'); }
@@ -118,4 +258,50 @@ class UserService
     public function getApprovedUsersByAgency(string $agencyId): array { return $this->getUsersByAdmin($agencyId); }
     public function getPendingUserCount(): int { return (int)$this->pdo->query("SELECT COUNT(*) FROM users WHERE status='PENDING'")->fetchColumn(); }
     private function listUsers(string $where,array $params): array { $s=$this->pdo->prepare('SELECT * FROM users WHERE '.$where.' ORDER BY id DESC'); $s->execute($params); return array_map(fn($r)=>userRow($r),$s->fetchAll()); }
+public function updateUserStatus(
+    int $id,
+    string $status
+): array {
+
+    $user = $this->findById($id);
+
+    if (!$user) {
+        throw new RuntimeException(
+            'User not found'
+        );
+    }
+
+    if ($user['role'] !== 'USER') {
+        throw new RuntimeException(
+            'Only users can be activated or deactivated'
+        );
+    }
+
+    $status = strtoupper(trim($status));
+
+    if (!in_array(
+        $status,
+        ['ACTIVE', 'INACTIVE'],
+        true
+    )) {
+        throw new RuntimeException(
+            'Invalid status'
+        );
+    }
+
+    $stmt = $this->pdo->prepare(
+        'UPDATE users
+         SET status = ?
+         WHERE id = ?'
+    );
+
+    $stmt->execute([
+        $status,
+        $id
+    ]);
+
+    return userRow(
+        $this->findById($id)
+    );
 }
+    }

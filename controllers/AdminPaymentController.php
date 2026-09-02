@@ -395,6 +395,54 @@ public function summary(): void
         $summary,
         200
     );
-}         
+}  
+public function history(): void
+{
+    try {
+
+        $userId = isset($_GET['user_id'])
+            ? (int) $_GET['user_id']
+            : 0;
+
+        if ($userId <= 0) {
+            errorResponse(
+                'Valid user_id is required',
+                400
+            );
+            return;
+        }
+
+        $history =
+            $this->paymentService
+                ->getUserPaymentHistory($userId);
+
+        successResponse(
+            $history,
+            200
+        );
+
+    } catch (InvalidArgumentException $e) {
+
+        errorResponse(
+            $e->getMessage(),
+            400
+        );
+
+    } catch (RuntimeException $e) {
+
+        errorResponse(
+            $e->getMessage(),
+            400
+        );
+
+    } catch (Throwable $e) {
+
+        errorResponse(
+            $e->getMessage(),
+            500
+        );
+    }
+}
+ 
        
 }

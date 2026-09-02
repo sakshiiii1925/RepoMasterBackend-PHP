@@ -18,4 +18,25 @@ class UserController {
  public function delete($id){$this->s->deleteUser((int)$id);jsonResponse('User deleted successfully');}
  public function approved(){jsonResponse($this->s->getApprovedUsersByAgency((string)queryParam('agencyId','')));}
  public function pendingCount(){jsonResponse(['count'=>$this->s->getPendingUserCount()]);}
+public function updateStatus($id)
+{
+    $body = requestBody();
+
+    $status = strtoupper(
+        trim((string)($body['status'] ?? ''))
+    );
+
+    if (!in_array($status, ['ACTIVE', 'INACTIVE'], true)) {
+        throw new RuntimeException(
+            'Status must be ACTIVE or INACTIVE'
+        );
+    }
+
+    jsonResponse(
+        $this->s->updateUserStatus(
+            (int)$id,
+            $status
+        )
+    );
 }
+ }

@@ -34,7 +34,8 @@ require_once __DIR__ .
 
 require_once __DIR__ .
     '/controllers/InvoicePaymentController.php';
-
+require_once __DIR__ .
+    '/controllers/UserPaymentController.php';
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
@@ -68,6 +69,11 @@ new InvoicePaymentController(
     );
    $adminPayment =
     new AdminPaymentController(
+        $pdo,
+        new AdminPaymentService($pdo)
+    );
+    $userPayment =
+    new UserPaymentController(
         $pdo,
         new AdminPaymentService($pdo)
     );
@@ -327,5 +333,33 @@ elseif(
     $path === '/api/admin/payment/summary'
 )
     $adminPayment->summary();
+    elseif(
+    $method === 'GET' &&
+    $path === '/api/admin/payment/history'
+)
+    $adminPayment->history();
+    elseif (
+    $method === 'GET' &&
+    $path === '/api/user/payment/history'
+)
+    $userPayment->history();
+
+elseif (
+    $method === 'GET' &&
+    $path === '/api/user/payment/summary'
+)
+    $userPayment->summary();
+    elseif (
+    $method === 'PUT' &&
+    preg_match(
+        '#^/api/users/(\d+)/status$#',
+        $path,
+        $matches
+    )
+) {
+    $user->updateStatus(
+        (int)$matches[1]
+    );
+}
  else errorResponse('API endpoint not found',404);
 } catch(Throwable $e) { errorResponse($e->getMessage(),500); }
