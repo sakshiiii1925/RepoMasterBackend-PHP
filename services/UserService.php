@@ -304,4 +304,28 @@ public function updateUserStatus(
         $this->findById($id)
     );
 }
+public function getUserAgencyId(int $userId): string
+{
+    $user = $this->findById($userId);
+
+    if (!$user) {
+        throw new RuntimeException('User not found');
+    }
+
+    if ($user['role'] !== 'USER') {
+        throw new RuntimeException('Only users can access user vehicle data');
+    }
+
+    if ($user['status'] !== 'ACTIVE') {
+        throw new RuntimeException('User account is not active');
+    }
+
+    $agencyId = trim((string)($user['agency_id'] ?? ''));
+
+    if ($agencyId === '') {
+        throw new RuntimeException('User agency ID not found');
+    }
+
+    return $agencyId;
+}
     }

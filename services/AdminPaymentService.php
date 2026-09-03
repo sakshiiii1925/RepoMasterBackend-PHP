@@ -1383,7 +1383,37 @@ public function getMyPaymentSummary(int $userId): array
                 ''
             )
     ];
-} 
+}
+public function deletePayment(int $paymentId): array
+{
+    if ($paymentId <= 0) {
+        return [
+            'success' => false,
+            'message' => 'Invalid payment id'
+        ];
+    }
+
+    $stmt = $this->pdo->prepare("
+        DELETE FROM admin_payment
+        WHERE id = ?
+    ");
+
+    $stmt->execute([
+        $paymentId
+    ]);
+
+    if ($stmt->rowCount() === 0) {
+        return [
+            'success' => false,
+            'message' => 'Payment not found'
+        ];
+    }
+
+    return [
+        'success' => true,
+        'message' => 'Payment deleted successfully'
+    ];
+}
 
 }
 

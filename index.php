@@ -58,7 +58,8 @@ new VehicleController(
         $pdo,
         $adminNotificationService
     ),
-    new ExcelService($pdo)
+    new ExcelService($pdo),
+    new UserService($pdo)
 );
     $invoice=
 new InvoiceController(
@@ -360,6 +361,19 @@ elseif (
     $user->updateStatus(
         (int)$matches[1]
     );
+}
+elseif(
+    $method === 'DELETE' &&
+    preg_match(
+        '#^/api/admin/payments/([0-9]+)$#',
+        $path,
+        $matches
+    )
+) {
+    $adminPaymentController->delete(
+        (int)$matches[1]
+    );
+    exit;
 }
  else errorResponse('API endpoint not found',404);
 } catch(Throwable $e) { errorResponse($e->getMessage(),500); }

@@ -172,7 +172,127 @@ public function updateStatus(
     public function getAllVehicles(string $agencyId): array { $s=$this->pdo->prepare($this->baseSelect().' WHERE v.agency_id=? ORDER BY v.vehicle_number');$s->execute([$agencyId]);return array_map(fn($r)=>vehicleRow($r),$s->fetchAll()); }
     public function updateVehicle(string $keyword,array $u): array { $r=$this->findVehicleRow($keyword); if(!$r) throw new RuntimeException('Vehicle Not Found with number: '.$keyword); $fields=['owner_name','owner_mobile','manufacture_name','model','color','engine_number','chassis_number','agency_name','agency_mobile','agency_mobile2','agency_manager','agency_id','vehicle_make','vehicle_type','branch','customer_area','customer_address','executive_name','allocation_dpd','repo_status','area_manager_name','area_manager_mobile_no','area_manager_email_id','contact_name2','contact_name2_designation','contact_name2_mobile_no','region_manager_name','region_manager_mobile_no','region_manager_email_id','finance','ref_letter','total_charges']; $map=['owner_name'=>'ownerName','owner_mobile'=>'ownerMobile','manufacture_name'=>'manufactureName','model'=>'model','color'=>'color','engine_number'=>'engineNumber','chassis_number'=>'chassisNumber','agency_name'=>'agencyName','agency_mobile'=>'agencyMobile','agency_mobile2'=>'agencyMobile2','agency_manager'=>'agencyManager','agency_id'=>'agencyId','vehicle_make'=>'vehicleMake','vehicle_type'=>'vehicleType','branch'=>'branch','customer_area'=>'customerArea','customer_address'=>'customerAddress','executive_name'=>'executiveName','allocation_dpd'=>'allocationDpd','repo_status'=>'repoStatus','area_manager_name'=>'areaManagerName','area_manager_mobile_no'=>'areaManagerMobileNo','area_manager_email_id'=>'areaManagerEmailId','contact_name2'=>'contactName2','contact_name2_designation'=>'contactName2Designation','contact_name2_mobile_no'=>'contactName2MobileNo','region_manager_name'=>'regionManagerName','region_manager_mobile_no'=>'regionManagerMobileNo','region_manager_email_id'=>'regionManagerEmailId','finance'=>'finance','ref_letter'=>'refLetter','total_charges'=>'totalCharges']; $sets=[];$params=[];foreach($fields as $f){$sets[]="$f=?";$params[]=$u[$map[$f]]??null;}$params[]=$r['repo_year'];$params[]=$r['repo_month'];$params[]=$r['loan_number'];$s=$this->pdo->prepare('UPDATE vehicle SET '.implode(',',$sets).' WHERE repo_year=? AND repo_month=? AND loan_number=?');$s->execute($params);return vehicleRow($this->findVehicleRow($keyword)); }
     public function deleteVehicle(string $keyword): void { $r=$this->findVehicleRow($keyword); if(!$r) throw new RuntimeException('Vehicle Not Found with number: '.$keyword); $s=$this->pdo->prepare('DELETE FROM vehicle WHERE repo_year=? AND repo_month=? AND loan_number=?');$s->execute([$r['repo_year'],$r['repo_month'],$r['loan_number']]); }
-    public function searchVehicleNumbers(string $keyword): array { $n=strtoupper(str_replace(['-','/','.',' '],'',$keyword));$s=$this->pdo->prepare($this->baseSelect()." WHERE UPPER(REPLACE(REPLACE(REPLACE(REPLACE(v.vehicle_number,'-',''),'/',''),'.',''),' ','')) LIKE CONCAT('%',?,'%') OR UPPER(v.loan_number) LIKE CONCAT('%',UPPER(?),'%') ORDER BY v.vehicle_number LIMIT 50");$s->execute([$n,$keyword]);return array_map(fn($r)=>vehicleRow($r),$s->fetchAll()); }
+ public function searchVehicleNumbers(
+    string $keyword,
+    string $agencyId
+): array {
+
+    $n = strtoupper(
+        str_replace(
+            ['-', '/', '.', ' '],
+            '',
+            $keyword
+        )
+    );
+
+    $sql = $this->baseSelect() . "
+        WHERE v.agency_id = ?
+        AND (
+            UPPER(
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(
+                                v.vehicle_number,
+                                '-', ''
+                            ),
+                            '/',
+                            ''
+                        ),
+                        '.',
+                        ''
+                    ),
+                    ' ',
+                    ''
+                )
+            ) LIKE CONCAT('%', ?, '%')
+
+            OR UPPER(v.loan_number)
+                LIKE CONCAT('%', UPPER(?), '%')
+        )
+
+        ORDER BY v.vehicle_number
+        LIMIT 50
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute([
+        $agencyId,
+        $n,
+        $keyword
+    ]);
+
+    return array_map(
+        fn($r) => vehicleRow($r),
+        $stmt->fetchAll()
+    );
+}
+private function findVehicleRowByAgency(
+    string $keyword,
+    string $agencyId
+): ?array {
+
+    $normalized = strtoupper(
+        str_replace(
+            ['-', '/', '.', ' '],
+            '',
+            $keyword
+        )
+    );
+
+    $sql = $this->baseSelect() . "
+        WHERE v.agency_id = ?
+        AND (
+            UPPER(
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(
+                                v.vehicle_number,
+                                '-', ''
+                            ),
+                            '/',
+                            ''
+                        ),
+                        '.',
+                        ''
+                    ),
+                    ' ',
+                    ''
+                )
+            ) = ?
+
+            OR UPPER(v.loan_number) = UPPER(?)
+        )
+
+        LIMIT 1
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute([
+        $agencyId,
+        $normalized,
+        $keyword
+    ]);
+
+    return $stmt->fetch() ?: null;
+}
+public function getVehicleForUser(
+    string $keyword,
+    string $agencyId
+): ?array {
+
+    $row = $this->findVehicleRowByAgency(
+        $keyword,
+        $agencyId
+    );
+
+    return $row
+        ? vehicleRow($row)
+        : null;
+}
     public function assignVehicleToYard(string $vehicleNumber,int $yardId): bool { $s=$this->pdo->prepare('UPDATE vehicle SET yard_id=? WHERE vehicle_number=?');$s->execute([$yardId,$vehicleNumber]);return $s->rowCount()>0; }
     public function getVehiclesByYard(int $yardId,string $agencyId): array { $s=$this->pdo->prepare($this->baseSelect().' WHERE v.yard_id=? AND v.agency_id=? ORDER BY v.vehicle_number');$s->execute([$yardId,$agencyId]);return array_map(fn($r)=>vehicleRow($r),$s->fetchAll()); }
     public function removeVehicleFromYard(string $vehicleNumber): bool { $s=$this->pdo->prepare('UPDATE vehicle SET yard_id=NULL WHERE vehicle_number=?');$s->execute([$vehicleNumber]);return $s->rowCount()>0; }

@@ -443,6 +443,39 @@ public function history(): void
         );
     }
 }
+public function delete(int $id): void
+{
+    try {
+
+        if ($id <= 0) {
+            errorResponse(
+                'Valid payment id is required',
+                400
+            );
+            return;
+        }
+
+        $result =
+            $this->paymentService
+                ->deletePayment($id);
+
+        if (($result['success'] ?? false) === true) {
+
+            jsonResponse($result, 200);
+
+        } else {
+
+            jsonResponse($result, 404);
+        }
+
+    } catch (Throwable $e) {
+
+        errorResponse(
+            $e->getMessage(),
+            500
+        );
+    }
+}
  
        
 }
