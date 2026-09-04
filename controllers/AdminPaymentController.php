@@ -45,109 +45,68 @@ public function createPayment(): void
     }
 }
 
-    /**
-     * Get users for Admin Payment screen.
-     *
-     * GET:
-     * /api/admin/payment/users
-     */
-    public function users(): void
-    {
-        $sql = "
-            SELECT
-                id,
-                full_name,
-                email,
-                mobile,
-                address,
-                role,
-                status
-            FROM users
-            WHERE LOWER(COALESCE(role, '')) <> 'admin'
-            ORDER BY full_name ASC
-        ";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute();
-
-        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        successResponse($users, 200);
-    }
-
-    /**
-     * Get vehicles completed by selected user.
-     *
-     * GET:
-     * /api/admin/payment/user-vehicles?user_id=2
-     */
-   public function userVehicles(): void
+  public function userVehicles(): void
 {
-    $userId = isset($_GET['user_id'])
-        ? (int)$_GET['user_id']
-        : 0;
+    try {
 
-    if ($userId <= 0) {
+        $userId = isset($_GET['user_id'])
+            ? (int) $_GET['user_id']
+            : 0;
+
+        $agencyId = trim(
+            (string)($_GET['agency_id'] ?? '')
+        );
+
+        if ($userId <= 0) {
+            errorResponse(
+                'Valid user_id is required',
+                400
+            );
+            return;
+        }
+
+        if ($agencyId === '') {
+            errorResponse(
+                'agency_id is required',
+                400
+            );
+            return;
+        }
+
+        $vehicles =
+            $this->paymentService->getUserVehicles(
+                $userId,
+                $agencyId
+            );
+
+        successResponse(
+            $vehicles,
+            200
+        );
+
+    } catch (InvalidArgumentException $e) {
+
         errorResponse(
-            'Valid user_id is required',
+            $e->getMessage(),
             400
         );
-        return;
+
+    } catch (RuntimeException $e) {
+
+        errorResponse(
+            $e->getMessage(),
+            400
+        );
+
+    } catch (Throwable $e) {
+
+        errorResponse(
+            $e->getMessage(),
+            500
+        );
     }
-
-    /*
-     * Return ONE ROW PER COMPLETED WORK.
-     *
-     * If user completed both Repo Mark and Parked
-     * for the same vehicle, two rows will be returned.
-     */
-
-    $sql = "
-        SELECT
-            v.repo_year,
-            v.repo_month,
-            v.loan_number,
-            v.vehicle_number,
-            v.vehicle_type,
-            v.repo_status,
-            v.agency_id,
-            v.repo_marked_by AS completed_by,
-            v.repo_marked_at AS completed_at,
-            'Repo Mark' AS work_type
-        FROM vehicle v
-        WHERE v.repo_marked_by = :repo_user
-
-        UNION ALL
-
-        SELECT
-            v.repo_year,
-            v.repo_month,
-            v.loan_number,
-            v.vehicle_number,
-            v.vehicle_type,
-            v.repo_status,
-            v.agency_id,
-            v.parked_by AS completed_by,
-            v.parked_at AS completed_at,
-            'Parked' AS work_type
-        FROM vehicle v
-        WHERE v.parked_by = :parked_user
-
-        ORDER BY vehicle_number ASC
-    ";
-
-    $stmt = $this->pdo->prepare($sql);
-
-    $stmt->execute([
-        ':repo_user' => $userId,
-        ':parked_user' => $userId
-    ]);
-
-    $vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    successResponse($vehicles, 200);
 }
-
+       
    
  public function rates(): void
     {
@@ -467,6 +426,40 @@ public function delete(int $id): void
 
             jsonResponse($result, 404);
         }
+
+    } catch (Throwable $e) {
+
+        errorResponse(
+            $e->getMessage(),
+            500
+        );
+    }
+}
+public function users(): void
+{
+    try {
+
+        $agencyId = trim(
+            (string)($_GET['agency_id'] ?? '')
+        );
+
+        if ($agencyId === '') {
+            errorResponse(
+                'agency_id is required',
+                400
+            );
+            return;
+        }
+
+        $users =
+            $this->paymentService
+                ->getUsersByAgency($agencyId);
+
+        jsonResponse([
+            'success' => true,
+            'message' => 'Users loaded successfully',
+            'data' => $users
+        ]);
 
     } catch (Throwable $e) {
 

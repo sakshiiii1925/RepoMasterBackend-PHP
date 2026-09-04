@@ -365,12 +365,12 @@ elseif (
 elseif(
     $method === 'DELETE' &&
     preg_match(
-        '#^/api/admin/payments/([0-9]+)$#',
+        '#^/api/admin/payment/([0-9]+)$#',
         $path,
         $matches
     )
 ) {
-    $adminPaymentController->delete(
+    $adminPayment->delete(
         (int)$matches[1]
     );
     exit;

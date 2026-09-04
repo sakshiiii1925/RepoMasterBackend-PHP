@@ -67,6 +67,7 @@ class AdminNotificationService
                 created_at
             FROM admin_notifications
             WHERE agency_id = :agency_id
+            AND is_read = 0
             ORDER BY created_at DESC
         ");
 

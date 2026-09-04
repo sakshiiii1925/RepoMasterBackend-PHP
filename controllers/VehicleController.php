@@ -33,8 +33,14 @@ public function list()
 {
     $b = requestBody();
 
+    // Status comes from JSON body
     $status = trim((string)($b['status'] ?? ''));
-    $userId = (int)($b['userId'] ?? 0);
+
+    // userId comes from URL query parameter:
+    // ?userId=2
+    $userId = (int)queryParam('userId', 0);
+
+    // Optional user information
     $userName = trim((string)($b['userName'] ?? ''));
     $userEmail = trim((string)($b['userEmail'] ?? ''));
 
@@ -63,7 +69,7 @@ public function list()
 
     jsonResponse($r);
 }
-
+    
  public function delete($k){$this->s->deleteVehicle($k);jsonResponse('Vehicle Deleted Successfully');}
  public function bulk(){jsonResponse($this->s->addAllVehicles(requestBody()));}
 public function search()
