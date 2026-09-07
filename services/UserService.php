@@ -1,11 +1,13 @@
 <?php
 
 require_once __DIR__ . '/../helpers/mappers.php';
-
+require_once __DIR__ . '/MailService.php';
 class UserService
 {
-    public function __construct(private PDO $pdo) {}
-
+    public function __construct(
+        private PDO $pdo,
+        private MailService $mailService
+    ) {}
     private function findByEmail(string $email): ?array
     {
         $s = $this->pdo->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
@@ -251,6 +253,300 @@ class UserService
     }
     public function forgotPassword(string $email): string { if(!$this->findByEmail($email)) throw new RuntimeException('Email not registered'); return 'Email verified. Reset password allowed'; }
     public function resetPassword(string $email,string $newPassword): array { $u=$this->findByEmail($email); if(!$u) throw new RuntimeException('User not found'); $s=$this->pdo->prepare('UPDATE users SET password=? WHERE id=?'); $s->execute([password_hash($newPassword,PASSWORD_BCRYPT),$u['id']]); return userRow($this->findById((int)$u['id'])); }
+    
+public function sendPasswordResetOtp(string $email): array
+{
+    $email = trim($email);
+
+    if ($email === '') {
+        throw new InvalidArgumentException('Email is required');
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new InvalidArgumentException('Invalid email address');
+    }
+
+    // Find registered user
+    $user = $this->findByEmail($email);
+
+    if (!$user) {
+        throw new RuntimeException('Email not registered');
+    }
+
+    // Generate secure 6-digit OTP
+    $otp = (string) random_int(100000, 999999);
+
+    // Store only hashed OTP
+    $otpHash = password_hash($otp, PASSWORD_DEFAULT);
+
+    // OTP expires after 5 minutes
+    $expiresAt = date(
+        'Y-m-d H:i:s',
+        time() + 300
+    );
+
+    // Remove previous unused OTPs
+    $delete = $this->pdo->prepare(
+        'DELETE FROM password_reset_otps
+         WHERE user_id = ? AND used = 0'
+    );
+
+    $delete->execute([
+        $user['id']
+    ]);
+
+    // Store new OTP
+    $insert = $this->pdo->prepare(
+        'INSERT INTO password_reset_otps
+        (
+            user_id,
+            email,
+            otp_hash,
+            expires_at,
+            attempts,
+            verified,
+            used
+        )
+        VALUES (?, ?, ?, ?, 0, 0, 0)'
+    );
+
+    $insert->execute([
+        $user['id'],
+        $email,
+        $otpHash,
+        $expiresAt
+    ]);
+
+    // Send actual OTP to user's registered email
+    $this->mailService->sendPasswordResetOtp(
+        $email,
+        (string) ($user['full_name'] ?? ''),
+        $otp
+    );
+
+    return [
+        'success' => true,
+        'message' => 'OTP sent successfully to your registered email'
+    ];
+}
+public function verifyPasswordResetOtp(
+    string $email,
+    string $otp
+): array {
+    $email = trim($email);
+    $otp = trim($otp);
+
+    if ($email === '') {
+        throw new InvalidArgumentException('Email is required');
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new InvalidArgumentException('Invalid email address');
+    }
+
+    if (!preg_match('/^\d{6}$/', $otp)) {
+        throw new InvalidArgumentException('OTP must be 6 digits');
+    }
+
+    // Get latest unused OTP
+    $stmt = $this->pdo->prepare(
+        'SELECT *
+         FROM password_reset_otps
+         WHERE email = ?
+           AND used = 0
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+
+    $stmt->execute([$email]);
+
+    $resetOtp = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$resetOtp) {
+        throw new RuntimeException(
+            'OTP not found or already used'
+        );
+    }
+
+    // Check maximum attempts
+    if ((int) $resetOtp['attempts'] >= 5) {
+        throw new RuntimeException(
+            'Too many incorrect OTP attempts. Please request a new OTP.'
+        );
+    }
+
+    // Check expiry
+    if (
+        strtotime($resetOtp['expires_at']) < time()
+    ) {
+        throw new RuntimeException(
+            'OTP has expired. Please request a new OTP.'
+        );
+    }
+
+    // Verify OTP against stored hash
+    if (!password_verify($otp, $resetOtp['otp_hash'])) {
+
+        $update = $this->pdo->prepare(
+            'UPDATE password_reset_otps
+             SET attempts = attempts + 1
+             WHERE id = ?'
+        );
+
+        $update->execute([
+            $resetOtp['id']
+        ]);
+
+        $remaining =
+            4 - (int) $resetOtp['attempts'];
+
+        if ($remaining < 0) {
+            $remaining = 0;
+        }
+
+        throw new RuntimeException(
+            "Invalid OTP. {$remaining} attempts remaining."
+        );
+    }
+
+    // OTP is correct
+    $update = $this->pdo->prepare(
+        'UPDATE password_reset_otps
+         SET verified = 1
+         WHERE id = ?'
+    );
+
+    $update->execute([
+        $resetOtp['id']
+    ]);
+
+    return [
+        'success' => true,
+        'message' => 'OTP verified successfully'
+    ];
+}
+public function resetPasswordWithOtp(
+    string $email,
+    string $otp,
+    string $newPassword
+): array {
+    $email = trim($email);
+    $otp = trim($otp);
+
+    if ($email === '') {
+        throw new InvalidArgumentException('Email is required');
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new InvalidArgumentException('Invalid email address');
+    }
+
+    if (!preg_match('/^\d{6}$/', $otp)) {
+        throw new InvalidArgumentException('OTP must be 6 digits');
+    }
+
+    if ($newPassword === '') {
+        throw new InvalidArgumentException('New password is required');
+    }
+
+    // Same password policy used by your Android app
+    if (!preg_match(
+        '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@#$%^&+=!]).{8,}$/',
+        $newPassword
+    )) {
+        throw new InvalidArgumentException(
+            'Password must be at least 8 characters and contain uppercase, lowercase, number and special character'
+        );
+    }
+
+    // Find user
+    $user = $this->findByEmail($email);
+
+    if (!$user) {
+        throw new RuntimeException('User not found');
+    }
+
+    // Get the latest OTP
+    $stmt = $this->pdo->prepare(
+        'SELECT *
+         FROM password_reset_otps
+         WHERE user_id = ?
+           AND email = ?
+           AND used = 0
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+
+    $stmt->execute([
+        $user['id'],
+        $email
+    ]);
+
+    $resetOtp = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$resetOtp) {
+        throw new RuntimeException(
+            'Password reset OTP not found'
+        );
+    }
+
+    // OTP must have been verified first
+    if ((int) $resetOtp['verified'] !== 1) {
+        throw new RuntimeException(
+            'Please verify the OTP first'
+        );
+    }
+
+    // Check expiry again
+    if (strtotime($resetOtp['expires_at']) < time()) {
+        throw new RuntimeException(
+            'OTP has expired. Please request a new OTP.'
+        );
+    }
+
+    // Verify OTP again before changing password
+    if (!password_verify($otp, $resetOtp['otp_hash'])) {
+        throw new RuntimeException(
+            'Invalid OTP'
+        );
+    }
+
+    // Hash new password
+    $passwordHash = password_hash(
+        $newPassword,
+        PASSWORD_DEFAULT
+    );
+
+    // Update password
+    $updateUser = $this->pdo->prepare(
+        'UPDATE users
+         SET password = ?,
+             failed_attempts = 0,
+             lock_time = NULL
+         WHERE id = ?'
+    );
+
+    $updateUser->execute([
+        $passwordHash,
+        $user['id']
+    ]);
+
+    // Mark OTP as used
+    $updateOtp = $this->pdo->prepare(
+        'UPDATE password_reset_otps
+         SET used = 1
+         WHERE id = ?'
+    );
+
+    $updateOtp->execute([
+        $resetOtp['id']
+    ]);
+
+    return [
+        'success' => true,
+        'message' => 'Password reset successfully'
+    ];
+}
     public function verifyEmail(string $email): bool { return $this->findByEmail($email)!==null; }
     public function getUsersByAdmin(string $agencyId): array { return $this->listUsers("agency_id = ? AND role = 'USER' AND status = 'ACTIVE'",[$agencyId]); }
     public function searchUsers(string $agencyId,string $search): array { $q='%'.$search.'%'; return $this->listUsers("agency_id = ? AND role = 'USER' AND status = 'ACTIVE' AND (LOWER(full_name) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?))",[$agencyId,$q,$q]); }

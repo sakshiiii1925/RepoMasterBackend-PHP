@@ -39,4 +39,31 @@ public function updateStatus($id)
         )
     );
 }
+public function sendPasswordResetOtp()
+{
+    jsonResponse(
+        $this->s->sendPasswordResetOtp(
+            (string) queryParam('email', '')
+        )
+    );
+}
+public function verifyPasswordResetOtp()
+{
+    jsonResponse(
+        $this->s->verifyPasswordResetOtp(
+            (string) queryParam('email', ''),
+            (string) queryParam('otp', '')
+        )
+    );
+}
+public function resetPasswordWithOtp()
+{
+    jsonResponse(
+        $this->s->resetPasswordWithOtp(
+            (string) queryParam('email', ''),
+            (string) queryParam('otp', ''),
+            (string) queryParam('newPassword', '')
+        )
+    );
+}
  }

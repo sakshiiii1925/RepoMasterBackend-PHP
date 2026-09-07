@@ -11,6 +11,7 @@ require_once __DIR__ .
 require_once __DIR__ .
     '/controllers/AdminNotificationController.php';
 require_once __DIR__ . '/services/AdminPaymentService.php';
+require_once __DIR__ . '/services/MailService.php';
 require_once __DIR__ . '/services/UserService.php';
 require_once __DIR__ . '/services/VehicleService.php';
 require_once __DIR__ . '/services/InvoiceService.php';
@@ -41,9 +42,18 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-$pdo=db();
-$user=new UserController(
-    new UserService($pdo));
+$pdo = db();
+
+$mailService = new MailService();
+
+$userService = new UserService(
+    $pdo,
+    $mailService
+);
+
+$user = new UserController(
+    $userService
+);
 $adminNotificationService =
     new AdminNotificationService($pdo);
 
@@ -59,7 +69,7 @@ new VehicleController(
         $adminNotificationService
     ),
     new ExcelService($pdo),
-    new UserService($pdo)
+    $userService
 );
     $invoice=
 new InvoiceController(
@@ -108,6 +118,21 @@ try {
  elseif($method==='PUT'&&preg_match('#^/api/admin/reject/(\d+)$#',$path,$m))$user->reject($m[1]);
  elseif($method==='GET'&&$path==='/api/users/profile')$user->profile();
  elseif($method==='PUT'&&preg_match('#^/api/users/(\d+)$#',$path,$m))$user->update($m[1]);
+ elseif(
+    $method === 'POST' &&
+    $path === '/api/forgot-password/send-otp'
+)
+    $user->sendPasswordResetOtp();
+    elseif(
+    $method === 'POST' &&
+    $path === '/api/forgot-password/verify-otp'
+)
+    $user->verifyPasswordResetOtp();
+    elseif(
+    $method === 'POST' &&
+    $path === '/api/forgot-password/reset'
+)
+    $user->resetPasswordWithOtp();
  elseif($method==='POST'&&$path==='/api/forgot-password')$user->forgot();
  elseif($method==='PUT'&&$path==='/api/reset-password')$user->reset();
  elseif($method==='GET'&&$path==='/api/verify-email')$user->verify();
