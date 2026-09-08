@@ -608,10 +608,6 @@ public function getUserAgencyId(int $userId): string
         throw new RuntimeException('User not found');
     }
 
-    if ($user['role'] !== 'USER') {
-        throw new RuntimeException('Only users can access user vehicle data');
-    }
-
     if ($user['status'] !== 'ACTIVE') {
         throw new RuntimeException('User account is not active');
     }

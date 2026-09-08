@@ -30,4 +30,12 @@ public function updatePayment($id)
         )
     );
 }
+public function searchVehicles()
+{
+    $keyword = trim((string)queryParam('keyword', ''));
+
+    jsonResponse(
+        $this->s->searchVehiclesForInvoice($keyword)
+    );
+}
 }

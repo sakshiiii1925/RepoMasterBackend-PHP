@@ -78,40 +78,234 @@ function vehicleRow(array $r): array
 
 function invoiceRow(array $r): array
 {
+    /*
+     * -----------------------------------------
+     * INVOICE TOTAL
+     * -----------------------------------------
+     */
+    $invoiceTotal = isset($r['invoice_total'])
+        ? (float)$r['invoice_total']
+        : 0.0;
+
+
+    /*
+     * -----------------------------------------
+     * PAYMENT
+     *
+     * invoice_payment is the source of truth.
+     *
+     * total_paid comes from:
+     *
+     * SUM(invoice_payment.payment_amount)
+     *
+     * -----------------------------------------
+     */
+    if (array_key_exists('total_paid', $r)) {
+
+        $paymentReceived =
+            (float)($r['total_paid'] ?? 0);
+
+    } else {
+
+        /*
+         * Fallback for places where total_paid
+         * is not included in the SQL query.
+         */
+        $paymentReceived =
+            isset($r['payment_received'])
+                ? (float)$r['payment_received']
+                : 0.0;
+    }
+
+
+    /*
+     * -----------------------------------------
+     * REMAINING AMOUNT
+     * -----------------------------------------
+     */
+    $remainingAmount = max(
+        0,
+        $invoiceTotal - $paymentReceived
+    );
+
+
+    /*
+     * -----------------------------------------
+     * PAYMENT STATUS
+     * -----------------------------------------
+     */
+    if ($paymentReceived <= 0) {
+
+        $paymentStatus = 'Pending';
+
+    } elseif ($paymentReceived < $invoiceTotal) {
+
+        $paymentStatus = 'Partial';
+
+    } else {
+
+        $paymentStatus = 'Paid';
+    }
+
+
+    /*
+     * -----------------------------------------
+     * PAYMENT DATE
+     *
+     * Prefer latest payment from
+     * invoice_payment.
+     * -----------------------------------------
+     */
+    $paymentDate =
+        $r['latest_payment_date']
+        ?? $r['payment_date']
+        ?? null;
+
+
+    /*
+     * -----------------------------------------
+     * RETURN INVOICE
+     * -----------------------------------------
+     */
     return [
-        'id' => isset($r['id']) ? (int)$r['id'] : null,
-        'invoiceNumber' => $r['invoice_number'] ?? null,
-        'invoiceDate' => $r['invoice_date'] ?? null,
-        'repoYear' => $r['repo_year'] ?? null,
-        'repoMonth' => $r['repo_month'] ?? null,
-        'invoiceBank' => $r['invoice_bank'] ?? null,
-        'invoiceAddress' => $r['invoice_address'] ?? null,
-        'loanNumber' => $r['loan_number'] ?? null,
-        'customerName' => $r['customer_name'] ?? null,
-        'vehicleNumber' => $r['vehicle_number'] ?? null,
-        'vehicleType' => $r['vehicle_type'] ?? null,
-        'vehicleMake' => $r['vehicle_make'] ?? null,
-        'vehicleModel' => $r['vehicle_model'] ?? null,
-        'engineNumber' => $r['engine_number'] ?? null,
-        'chassisNumber' => $r['chassis_number'] ?? null,
-        'description1' => $r['description_1'] ?? null,
-        'basic1Amount' => isset($r['basic1_amount']) ? (float)$r['basic1_amount'] : null,
-        'description2' => $r['description_2'] ?? null,
-        'basic2Amount' => isset($r['basic2_amount']) ? (float)$r['basic2_amount'] : null,
-        'cgst' => isset($r['cgst']) ? (float)$r['cgst'] : null,
-        'sgst' => isset($r['sgst']) ? (float)$r['sgst'] : null,
-        'igst' => isset($r['igst']) ? (float)$r['igst'] : null,
-        'totalBasic' => isset($r['total_basic']) ? (float)$r['total_basic'] : null,
-        'gst' => isset($r['gst']) ? (float)$r['gst'] : null,
-        'invoiceTotal' => isset($r['invoice_total']) ? (float)$r['invoice_total'] : null,
-        'remarks' => $r['remarks'] ?? null,
-        'createdBy' => $r['created_by'] ?? null,
-        'createdDate' => $r['created_date'] ?? null,
-        'gstPercent' => isset($r['gst_percent']) ? (float)$r['gst_percent'] : null,
-        'paymentDate' => $r['payment_date'] ?? null,
-        'paymentReceived' => isset($r['payment_received']) ? (float)$r['payment_received'] : null,
-        'paymentStatus' => $r['payment_status'] ?? null,
-        'agencyId' => $r['agency_id'] ?? null,
+
+        'id' =>
+            isset($r['id'])
+                ? (int)$r['id']
+                : null,
+
+        'invoiceNumber' =>
+            $r['invoice_number'] ?? null,
+
+        'invoiceDate' =>
+            $r['invoice_date'] ?? null,
+
+        'repoYear' =>
+            $r['repo_year'] ?? null,
+
+        'repoMonth' =>
+            $r['repo_month'] ?? null,
+
+        'invoiceBank' =>
+            $r['invoice_bank'] ?? null,
+
+        'invoiceAddress' =>
+            $r['invoice_address'] ?? null,
+
+        'loanNumber' =>
+            $r['loan_number'] ?? null,
+
+        'customerName' =>
+            $r['customer_name'] ?? null,
+
+        'vehicleNumber' =>
+            $r['vehicle_number'] ?? null,
+
+        'vehicleType' =>
+            $r['vehicle_type'] ?? null,
+
+        'vehicleMake' =>
+            $r['vehicle_make'] ?? null,
+
+        'vehicleModel' =>
+            $r['vehicle_model'] ?? null,
+
+        'engineNumber' =>
+            $r['engine_number'] ?? null,
+
+        'chassisNumber' =>
+            $r['chassis_number'] ?? null,
+
+        'description1' =>
+            $r['description_1'] ?? null,
+
+        'basic1Amount' =>
+            isset($r['basic1_amount'])
+                ? (float)$r['basic1_amount']
+                : null,
+
+        'description2' =>
+            $r['description_2'] ?? null,
+
+        'basic2Amount' =>
+            isset($r['basic2_amount'])
+                ? (float)$r['basic2_amount']
+                : null,
+
+        'cgst' =>
+            isset($r['cgst'])
+                ? (float)$r['cgst']
+                : null,
+
+        'sgst' =>
+            isset($r['sgst'])
+                ? (float)$r['sgst']
+                : null,
+
+        'igst' =>
+            isset($r['igst'])
+                ? (float)$r['igst']
+                : null,
+
+        'totalBasic' =>
+            isset($r['total_basic'])
+                ? (float)$r['total_basic']
+                : null,
+
+        'gst' =>
+            isset($r['gst'])
+                ? (float)$r['gst']
+                : null,
+
+        'invoiceTotal' =>
+            $invoiceTotal,
+
+        'remarks' =>
+            $r['remarks'] ?? null,
+
+        'createdBy' =>
+            $r['created_by'] ?? null,
+
+        'createdDate' =>
+            $r['created_date'] ?? null,
+
+        'gstPercent' =>
+            isset($r['gst_percent'])
+                ? (float)$r['gst_percent']
+                : null,
+
+        /*
+         * IMPORTANT:
+         * These now come from invoice_payment
+         */
+        'paymentDate' =>
+            $paymentDate,
+
+        'paymentReceived' =>
+            $paymentReceived,
+
+        'remainingAmount' =>
+            $remainingAmount,
+
+        'paymentStatus' =>
+            $paymentStatus,
+
+        'agencyId' =>
+            $r['agency_id'] ?? null,
+
+        /*
+         * Vehicle / yard information
+         */
+        'branch' =>
+            $r['vehicle_branch']
+            ?? $r['branch']
+            ?? null,
+
+        'yardName' =>
+            $r['yard_name'] ?? null,
+
+        'yardAddress' =>
+            $r['yard_address'] ?? null,
     ];
 }
 

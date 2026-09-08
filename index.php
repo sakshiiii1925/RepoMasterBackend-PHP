@@ -1,5 +1,4 @@
 <?php
-
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/helpers/response.php';
@@ -188,6 +187,7 @@ elseif(
     $repoImage->deleteUploadedImages(
         (int)$m[1]
     );
+    
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/assign-yard$#',$path,$m))$vehicle->assign($m[1]);
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/remove-yard$#',$path,$m))$vehicle->removeYard($m[1]);
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)$#',$path,$m))$vehicle->update($m[1]);
@@ -209,7 +209,11 @@ elseif(
     $invoicePayment->add(
         (int)$m[1]
     );
-
+elseif(
+    $method === 'GET' &&
+    $path === '/api/invoices/vehicle-search'
+)
+    $invoice->searchVehicles();
 elseif(
     $method === 'GET' &&
     preg_match(
