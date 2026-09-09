@@ -392,6 +392,17 @@ elseif (
     );
 }
 elseif(
+    $method === 'PUT' &&
+    preg_match(
+        '#^/api/invoices/(\d+)/dpd-charge$#',
+        $path,
+        $m
+    )
+)
+    $invoice->updateDpdCharge(
+        (int)$m[1]
+    );
+elseif(
     $method === 'DELETE' &&
     preg_match(
         '#^/api/admin/payment/([0-9]+)$#',

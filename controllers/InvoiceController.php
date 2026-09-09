@@ -38,4 +38,13 @@ public function searchVehicles()
         $this->s->searchVehiclesForInvoice($keyword)
     );
 }
+public function updateDpdCharge(int $id)
+{
+    jsonResponse(
+        $this->s->updateDpdCharge(
+            $id,
+            requestBody()
+        )
+    );
+}
 }

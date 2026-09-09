@@ -2,7 +2,52 @@
 require_once __DIR__ . '/../helpers/mappers.php';
 class InvoiceService {
     public function __construct(private PDO $pdo) {}
-    public function create(array $i): array { $map=['invoiceNumber'=>'invoice_number','invoiceDate'=>'invoice_date','repoYear'=>'repo_year','repoMonth'=>'repo_month','invoiceBank'=>'invoice_bank','invoiceAddress'=>'invoice_address','loanNumber'=>'loan_number','customerName'=>'customer_name','vehicleNumber'=>'vehicle_number','vehicleType'=>'vehicle_type','vehicleMake'=>'vehicle_make','vehicleModel'=>'vehicle_model','engineNumber'=>'engine_number','chassisNumber'=>'chassis_number','description1'=>'description_1','basic1Amount'=>'basic1_amount','description2'=>'description_2','basic2Amount'=>'basic2_amount','cgst'=>'cgst','sgst'=>'sgst','igst'=>'igst','totalBasic'=>'total_basic','gst'=>'gst','invoiceTotal'=>'invoice_total','remarks'=>'remarks','createdBy'=>'created_by','createdDate'=>'created_date','gstPercent'=>'gst_percent','paymentDate'=>'payment_date','paymentReceived'=>'payment_received','paymentStatus'=>'payment_status','agencyId'=>'agency_id'];$cols=[];$vals=[];$params=[];foreach($map as $json=>$db){$cols[]=$db;$vals[]='?';$params[]=$i[$json]??null;}$s=$this->pdo->prepare('INSERT INTO invoice ('.implode(',',$cols).') VALUES ('.implode(',',$vals).')');$s->execute($params);return $this->get((int)$this->pdo->lastInsertId()); }
+    public function create(
+        array $i): array {
+         $map=['invoiceNumber'=>'invoice_number',
+         'invoiceDate'=>'invoice_date',
+         'repoYear'=>'repo_year',
+         'repoMonth'=>'repo_month',
+         'invoiceBank'=>'invoice_bank',
+         'invoiceAddress'=>'invoice_address',
+         'loanNumber'=>'loan_number',
+         'customerName'=>'customer_name',
+         'vehicleNumber'=>'vehicle_number',
+         'vehicleType'=>'vehicle_type',
+         'vehicleMake'=>'vehicle_make',
+         'vehicleModel'=>'vehicle_model',
+         'engineNumber'=>'engine_number',
+         'chassisNumber'=>'chassis_number',
+         'description1'=>'description_1',
+         'basic1Amount'=>'basic1_amount',
+         'description2'=>'description_2',
+         'basic2Amount'=>'basic2_amount',
+         'cgst'=>'cgst',
+         'sgst'=>'sgst',
+         'igst'=>'igst',
+         'totalBasic'=>'total_basic',
+         'gst'=>'gst',
+         'invoiceTotal'=>'invoice_total',
+         'remarks'=>'remarks',
+         'createdBy'=>'created_by',
+         'createdDate'=>'created_date',
+         'gstPercent'=>'gst_percent',
+         'dpdChargePercent' => 'dpd_charge_percent',
+         'paymentDate'=>'payment_date',
+         'paymentReceived'=>'payment_received',
+         'paymentStatus'=>'payment_status',
+         'agencyId'=>'agency_id'];
+         $cols=[];
+         $vals=[];
+         $params=[];
+         foreach($map as $json=>$db){$cols[]=$db;
+         $vals[]='?';
+         $params[]=$i[$json]??null;
+         }$s=$this->pdo->prepare('INSERT INTO invoice (
+         '.implode(',',$cols).') VALUES ('.implode(',',$vals).')');$s->execute(
+            $params);return $this->get(
+                (int)$this->pdo->lastInsertId());
+                 }
    public function get(int $id): array
 {
     $sql = "
@@ -119,29 +164,96 @@ class InvoiceService {
         $r['yard_address'] ?? null;
 
 
-    /*
-     * -----------------------------------------
-     * PAYMENT DETAILS
-     * -----------------------------------------
-     *
-     * invoice_payment is the source of truth.
-     */
-    $invoiceTotal =
-        (float)($r['invoice_total'] ?? 0);
+   /*
+ * -----------------------------------------
+ * PAYMENT DETAILS
+ * -----------------------------------------
+ */
 
-    $totalPaid =
-        (float)($r['total_paid'] ?? 0);
+$invoiceTotal =
+    (float)($r['invoice_total'] ?? 0);
 
-    $remainingAmount = max(
+$totalPaid =
+    (float)($r['total_paid'] ?? 0);
+
+$result['paymentReceived'] =
+    $totalPaid;
+
+
+/*
+ * -----------------------------------------
+ * DPD
+ * -----------------------------------------
+ */
+
+$dpd = 0;
+
+if (!empty($r['invoice_date'])) {
+
+    try {
+
+        $invoiceDate = new DateTime(
+            $r['invoice_date']
+        );
+
+        $today = new DateTime('today');
+
+        if ($invoiceDate > $today) {
+
+            $dpd = 0;
+
+        } else {
+
+            $difference =
+                $invoiceDate->diff($today);
+
+            $dpd =
+                (int)$difference->days;
+        }
+
+    } catch (Exception $e) {
+
+        $dpd = 0;
+    }
+}
+
+
+/*
+ * -----------------------------------------
+ * DPD CHARGE
+ * -----------------------------------------
+ */
+
+$dpdChargePercent =
+    (float)($r['dpd_charge_percent'] ?? 0);
+
+$dpdExtraCharge =
+    $invoiceTotal
+    * ($dpdChargePercent / 100.0)
+    * $dpd;
+
+$dpdTotalAmount =
+    $invoiceTotal + $dpdExtraCharge;
+
+
+/*
+ * -----------------------------------------
+ * REMAINING AMOUNT
+ * -----------------------------------------
+ */
+
+$dpdRemainingAmount =
+    max(
         0,
-        $invoiceTotal - $totalPaid
+        $dpdTotalAmount - $totalPaid
     );
 
-    $result['paymentReceived'] =
-        $totalPaid;
 
-    $result['remainingAmount'] =
-        $remainingAmount;
+/*
+ * -----------------------------------------
+ * PAYMENT STATUS
+ * -----------------------------------------
+ */
 
 $paymentStatus = 'Pending';
 
@@ -149,7 +261,7 @@ if ($totalPaid <= 0) {
 
     $paymentStatus = 'Pending';
 
-} elseif ($totalPaid < $invoiceTotal) {
+} elseif ($totalPaid < $dpdTotalAmount) {
 
     $paymentStatus = 'Partial';
 
@@ -157,57 +269,37 @@ if ($totalPaid <= 0) {
 
     $paymentStatus = 'Paid';
 }
+
+
+/*
+ * -----------------------------------------
+ * RESPONSE
+ * -----------------------------------------
+ */
+
+$result['dpd'] =
+    $dpd;
+
+$result['dpdChargePercent'] =
+    $dpdChargePercent;
+
+$result['dpdExtraCharge'] =
+    $dpdExtraCharge;
+
+$result['dpdTotalAmount'] =
+    $dpdTotalAmount;
+
+$result['paymentReceived'] =
+    $totalPaid;
+
+$result['remainingAmount'] =
+    $dpdRemainingAmount;
+
 $result['paymentDate'] =
     $r['latest_payment_date'] ?? null;
 
-/*
- * Calculate payment status
- */
-$result['paymentStatus'] = $paymentStatus;
-    /*
-     * -----------------------------------------
-     * DPD
-     * -----------------------------------------
-     *
-     * DPD = number of days between
-     * invoice date and today.
-     */
-    $dpd = 0;
-
-    if (!empty($r['invoice_date'])) {
-
-        try {
-
-            $invoiceDate = new DateTime(
-                $r['invoice_date']
-            );
-
-           $invoiceDate = new DateTime(
-    $r['invoice_date']
-);
-
-$today = new DateTime('today');
-
-if ($invoiceDate > $today) {
-
-    $dpd = 0;
-
-} else {
-
-    $difference =
-        $invoiceDate->diff($today);
-
-    $dpd =
-        (int)$difference->days;
-}
-        } catch (Exception $e) {
-
-            $dpd = 0;
-        }
-    }
-
-    $result['dpd'] = $dpd;
-
+$result['paymentStatus'] =
+    $paymentStatus;
 
     return $result;
 }
@@ -605,6 +697,46 @@ public function searchVehiclesForInvoice(string $keyword): array
         $vehicles
     );
 }
-    
+public function updateDpdCharge(
+    int $id,
+    array $data
+): array {
+
+    // Check invoice exists
+    $invoice = $this->get($id);
+
+    $dpdChargePercent = isset($data['dpdChargePercent'])
+        ? (float)$data['dpdChargePercent']
+        : 0.0;
+
+    // Validate percentage
+    if ($dpdChargePercent < 0) {
+        throw new InvalidArgumentException(
+            'DPD charge percentage cannot be negative'
+        );
+    }
+
+    // Optional safety limit
+    if ($dpdChargePercent > 100) {
+        throw new InvalidArgumentException(
+            'DPD charge percentage cannot be greater than 100'
+        );
+    }
+
+    // Update database
+    $stmt = $this->pdo->prepare(
+        'UPDATE invoice
+         SET dpd_charge_percent = ?
+         WHERE id = ?'
+    );
+
+    $stmt->execute([
+        $dpdChargePercent,
+        $id
+    ]);
+
+    // Return updated invoice
+    return $this->get($id);
+}    
         
 }

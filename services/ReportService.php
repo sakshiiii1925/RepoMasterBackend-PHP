@@ -4,7 +4,177 @@ class ReportService {
     public function summary(string $agency): array { $s=$this->pdo->prepare("SELECT COUNT(*) total, SUM(CASE WHEN LOWER(repo_status)='open list' THEN 1 ELSE 0 END) openlist, SUM(CASE WHEN LOWER(repo_status)='contacted' THEN 1 ELSE 0 END) contacted, SUM(CASE WHEN LOWER(repo_status)='repo mark' THEN 1 ELSE 0 END) repoMark, SUM(CASE WHEN LOWER(repo_status)='parked' THEN 1 ELSE 0 END) parked, SUM(CASE WHEN LOWER(repo_status)='released' THEN 1 ELSE 0 END) released FROM vehicle WHERE agency_id=?");$s->execute([$agency]);$r=$s->fetch();return ['totalVehicles'=>(int)$r['total'],'openlist'=>(int)$r['openlist'],'contacted'=>(int)$r['contacted'],'repoMark'=>(int)$r['repoMark'],'parked'=>(int)$r['parked'],'released'=>(int)$r['released']]; }
     public function finance(string $agency,?string $finance,?string $branch): array {$sql="SELECT finance,branch,COUNT(*) totalVehicles,SUM(CASE WHEN LOWER(repo_status)='repo mark' THEN 1 ELSE 0 END) repoMarkedCount,SUM(CASE WHEN LOWER(repo_status)='parked' THEN 1 ELSE 0 END) parkedCount,SUM(CASE WHEN LOWER(repo_status)='released' THEN 1 ELSE 0 END) releasedCount FROM vehicle WHERE agency_id=?";$p=[$agency];if($finance!==null&&$finance!==''){ $sql.=' AND finance=?';$p[]=$finance;}if($branch!==null&&$branch!==''){ $sql.=' AND branch=?';$p[]=$branch;}$sql.=' GROUP BY finance,branch ORDER BY finance,branch';$s=$this->pdo->prepare($sql);$s->execute($p);return array_map(fn($r)=>['finance'=>$r['finance'],'branch'=>$r['branch'],'totalVehicles'=>(int)$r['totalVehicles'],'repoMarkedCount'=>(int)$r['repoMarkedCount'],'parkedCount'=>(int)$r['parkedCount'],'releasedCount'=>(int)$r['releasedCount']],$s->fetchAll());}
     public function monthly(string $agency,string $year,string $month): array {$s=$this->pdo->prepare("SELECT repo_year,repo_month,COUNT(*) totalVehicles,SUM(CASE WHEN UPPER(repo_status)='REPO MARK' THEN 1 ELSE 0 END) repoMarkedCount,SUM(CASE WHEN UPPER(repo_status)='PARKED' THEN 1 ELSE 0 END) parkedCount,SUM(CASE WHEN UPPER(repo_status)='RELEASED' THEN 1 ELSE 0 END) releasedCount FROM vehicle WHERE agency_id=? AND repo_year=? AND repo_month=? GROUP BY repo_year,repo_month ORDER BY repo_year DESC,repo_month DESC");$s->execute([$agency,$year,$month]);return array_map(fn($r)=>['repoYear'=>$r['repo_year'],'repoMonth'=>$r['repo_month'],'totalVehicles'=>(int)$r['totalVehicles'],'repoMarkedCount'=>(int)$r['repoMarkedCount'],'parkedCount'=>(int)$r['parkedCount'],'releasedCount'=>(int)$r['releasedCount']],$s->fetchAll());}
-    public function userActivity(string $agency): array {$sql="SELECT sh.user_name,sh.user_email,sh.agency_id,COUNT(*) total_searches,SUM(CASE WHEN UPPER(v.repo_status)='REPO MARK' THEN 1 ELSE 0 END) repoMark,SUM(CASE WHEN UPPER(v.repo_status)='PARKED' THEN 1 ELSE 0 END) parked,SUM(CASE WHEN UPPER(v.repo_status)='RELEASED' THEN 1 ELSE 0 END) released,MAX(sh.search_time) lastSearchTime FROM search_history sh LEFT JOIN vehicle v ON UPPER(REPLACE(REPLACE(sh.vehicle_number,'-',''),' ',''))=UPPER(REPLACE(REPLACE(v.vehicle_number,'-',''),' ','')) WHERE sh.agency_id=? GROUP BY sh.user_name,sh.user_email,sh.agency_id ORDER BY COUNT(*) DESC";$s=$this->pdo->prepare($sql);$s->execute([$agency]);return array_map(fn($r)=>['userName'=>$r['user_name'],'userEmail'=>$r['user_email'],'agencyId'=>$r['agency_id'],'totalSearches'=>(int)$r['total_searches'],'repoMarkedCount'=>(int)$r['repoMark'],'parkedCount'=>(int)$r['parked'],'releasedCount'=>(int)$r['released'],'lastSearchTime'=>$r['lastSearchTime']],$s->fetchAll());}
+  public function userActivity(
+    string $agency,
+    ?string $fromDate = null,
+    ?string $toDate = null,
+    ?string $userEmail = null
+): array {
+
+    $sql = "
+        SELECT
+            sh.user_name,
+            sh.user_email,
+            sh.agency_id,
+
+            COUNT(*) AS total_searches,
+
+            SUM(
+                CASE
+                    WHEN UPPER(TRIM(v.repo_status)) = 'REPO MARK'
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS repo_mark_count,
+
+            SUM(
+                CASE
+                    WHEN UPPER(TRIM(v.repo_status)) = 'CONTACTED'
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS contacted_count,
+
+            SUM(
+                CASE
+                    WHEN UPPER(TRIM(v.repo_status)) = 'ON THE WAY'
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS on_the_way_count,
+
+            SUM(
+                CASE
+                    WHEN UPPER(TRIM(v.repo_status)) = 'PARKED'
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS parked_count,
+
+            SUM(
+                CASE
+                    WHEN UPPER(TRIM(v.repo_status)) = 'RELEASED'
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS released_count,
+
+            MAX(sh.search_time) AS last_search_time
+
+        FROM search_history sh
+
+        LEFT JOIN vehicle v
+            ON UPPER(
+                REPLACE(
+                    REPLACE(sh.vehicle_number, '-', ''),
+                    ' ',
+                    ''
+                )
+            )
+            =
+            UPPER(
+                REPLACE(
+                    REPLACE(v.vehicle_number, '-', ''),
+                    ' ',
+                    ''
+                )
+            )
+
+        WHERE sh.agency_id = ?
+    ";
+
+    $params = [$agency];
+
+
+    // FROM DATE
+    if ($fromDate !== null && $fromDate !== '') {
+
+        $sql .= "
+            AND sh.search_time >= ?
+        ";
+
+        $params[] = $fromDate . ' 00:00:00';
+    }
+
+
+    // TO DATE
+    if ($toDate !== null && $toDate !== '') {
+
+        $sql .= "
+            AND sh.search_time < DATE_ADD(?, INTERVAL 1 DAY)
+        ";
+
+        $params[] = $toDate;
+    }
+
+
+    // USER
+    if ($userEmail !== null && $userEmail !== '') {
+
+        $sql .= "
+            AND sh.user_email = ?
+        ";
+
+        $params[] = $userEmail;
+    }
+
+
+    $sql .= "
+        GROUP BY
+            sh.user_name,
+            sh.user_email,
+            sh.agency_id
+
+        ORDER BY total_searches DESC
+    ";
+
+
+    $s = $this->pdo->prepare($sql);
+
+    $s->execute($params);
+
+    $rows = $s->fetchAll(PDO::FETCH_ASSOC);
+
+
+    return array_map(
+        function ($r) {
+
+            return [
+
+                'userName' =>
+                    $r['user_name'],
+
+                'userEmail' =>
+                    $r['user_email'],
+
+                'agencyId' =>
+                    $r['agency_id'],
+
+                'totalSearches' =>
+                    (int)$r['total_searches'],
+
+                'repoMarkedCount' =>
+                    (int)$r['repo_mark_count'],
+
+                'contactedCount' =>
+                    (int)$r['contacted_count'],
+
+                'onTheWayCount' =>
+                    (int)$r['on_the_way_count'],
+
+                'parkedCount' =>
+                    (int)$r['parked_count'],
+
+                'releasedCount' =>
+                    (int)$r['released_count'],
+
+                'lastSearchTime' =>
+                    $r['last_search_time']
+            ];
+        },
+        $rows
+    );
+}
     public function financeList(string $agency): array {$s=$this->pdo->prepare('SELECT DISTINCT finance FROM vehicle WHERE agency_id=? ORDER BY finance');$s->execute([$agency]);return array_values(array_filter(array_column($s->fetchAll(),'finance'),fn($x)=>$x!==null&&$x!==''));}
     public function branchList(string $agency,string $finance): array {$s=$this->pdo->prepare('SELECT DISTINCT branch FROM vehicle WHERE agency_id=? AND finance=? ORDER BY branch');$s->execute([$agency,$finance]);return array_values(array_filter(array_column($s->fetchAll(),'branch'),fn($x)=>$x!==null&&$x!==''));}
     public function vehicles(string $agency,?string $finance,?string $branch,?string $year,?string $month,string $status): array {$sql='SELECT vehicle_number,owner_name,loan_number,repo_status FROM vehicle WHERE agency_id=?';$p=[$agency];foreach([['finance',$finance],['branch',$branch],['repo_year',$year],['repo_month',$month]] as [$c,$v]){if($v!==null&&$v!==''){$sql.=" AND $c=?";$p[]=$v;}}if(strtoupper($status)!=='ALL'){$sql.=' AND UPPER(repo_status)=UPPER(?)';$p[]=$status;}$s=$this->pdo->prepare($sql);$s->execute($p);return array_map(fn($r)=>['vehicleNumber'=>$r['vehicle_number'],'ownerName'=>$r['owner_name'],'loanNumber'=>$r['loan_number'],'repoStatus'=>$r['repo_status']],$s->fetchAll());}
