@@ -29,22 +29,6 @@ class ReportService {
 
             SUM(
                 CASE
-                    WHEN UPPER(TRIM(v.repo_status)) = 'CONTACTED'
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS contacted_count,
-
-            SUM(
-                CASE
-                    WHEN UPPER(TRIM(v.repo_status)) = 'ON THE WAY'
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS on_the_way_count,
-
-            SUM(
-                CASE
                     WHEN UPPER(TRIM(v.repo_status)) = 'PARKED'
                     THEN 1
                     ELSE 0
@@ -155,12 +139,6 @@ class ReportService {
 
                 'repoMarkedCount' =>
                     (int)$r['repo_mark_count'],
-
-                'contactedCount' =>
-                    (int)$r['contacted_count'],
-
-                'onTheWayCount' =>
-                    (int)$r['on_the_way_count'],
 
                 'parkedCount' =>
                     (int)$r['parked_count'],

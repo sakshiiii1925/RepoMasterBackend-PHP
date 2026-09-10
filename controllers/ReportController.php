@@ -53,21 +53,23 @@ public function activityExcel($agency)
     );
 
     $data = array_map(
-        fn($r) => [
-            $r['userName'],
-            $r['userEmail'],
-            $r['totalSearches'],
-            $r['repoMarkedCount'],
-            $r['parkedCount'],
-            $r['releasedCount'],
-            $r['lastSearchTime']
-        ],
+        function ($r) {
+            return [
+                $r['userName'] ?? '',
+                $r['userEmail'] ?? '',
+                $r['totalSearches'] ?? 0,
+                $r['repoMarkedCount'] ?? 0,
+                $r['parkedCount'] ?? 0,
+                $r['releasedCount'] ?? 0,
+                $r['lastSearchTime'] ?? ''
+            ];
+        },
         $rows
     );
 
     $this->excel->download(
-        'User_Activity_Report.xlsx',
-        'Executive Report',
+        'Agent_Report.xlsx',
+        'Agent Report',
         [
             'User Name',
             'Email',
