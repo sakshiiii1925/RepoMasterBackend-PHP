@@ -27,6 +27,43 @@ public function list()
         )
     );
 }
+public function count()
+{
+    $userId = (int)queryParam(
+        'userId',
+        0
+    );
+
+    if ($userId <= 0) {
+        errorResponse(
+            'userId is required',
+            400
+        );
+        return;
+    }
+
+    $agencyId =
+        $this->userService
+            ->getUserAgencyId($userId);
+
+    if (!$agencyId) {
+        errorResponse(
+            'Agency not found for user',
+            404
+        );
+        return;
+    }
+
+    $count =
+        $this->s->getVehicleCount(
+            $agencyId
+        );
+
+    jsonResponse([
+        'success' => true,
+        'count' => $count
+    ]);
+}
  public function add(){jsonResponse($this->s->addVehicle(requestBody()));}
  public function update($k){jsonResponse($this->s->updateVehicle($k,requestBody()));}
  public function status($k)

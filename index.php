@@ -88,7 +88,11 @@ new InvoicePaymentController(
         new AdminPaymentService($pdo)
     );
 $yard=new YardController(new YardService($pdo));
-$history=new SearchHistoryController(new SearchHistoryService($pdo));
+$history =
+    new SearchHistoryController(
+        new SearchHistoryService($pdo),
+        $userService
+    );
 $report=new ReportController(new ReportService($pdo),new ExcelReportService());
 $excel=new ExcelController();
 $repoImage =
@@ -190,6 +194,11 @@ elseif(
     
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/assign-yard$#',$path,$m))$vehicle->assign($m[1]);
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)/remove-yard$#',$path,$m))$vehicle->removeYard($m[1]);
+ elseif(
+    $method === 'GET' &&
+    $path === '/api/vehicles/count'
+)
+    $vehicle->count();
  elseif($method==='PUT'&&preg_match('#^/api/vehicles/([^/]+)$#',$path,$m))$vehicle->update($m[1]);
  elseif($method==='DELETE'&&preg_match('#^/api/vehicles/([^/]+)$#',$path,$m))$vehicle->delete($m[1]);
  elseif($method==='GET'&&preg_match('#^/api/vehicles/([^/]+)$#',$path,$m))$vehicle->get($m[1]);
@@ -414,6 +423,25 @@ elseif(
         (int)$matches[1]
     );
     exit;
+}
+elseif (
+    $method === 'POST' &&
+    $path === '/api/search-history/bulk-delete'
+) {
+    $history->deleteMultiple();
+}
+elseif (
+    $method === 'DELETE' &&
+    preg_match(
+        '#^/api/search-history/(\d+)$#',
+        $path,
+        $matches
+    )
+) {
+
+    $history->delete(
+        (int)$matches[1]
+    );
 }
  else errorResponse('API endpoint not found',404);
 } catch(Throwable $e) { errorResponse($e->getMessage(),500); }

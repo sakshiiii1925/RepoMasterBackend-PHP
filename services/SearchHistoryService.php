@@ -9,4 +9,54 @@ class SearchHistoryService {
     public function byUser(string $agency,string $name): array {$s=$this->pdo->prepare('SELECT * FROM search_history WHERE agency_id=? AND user_name=? ORDER BY search_time DESC');$s->execute([$agency,$name]);return array_map(fn($r)=>searchHistoryRow($r),$s->fetchAll());}
     public function byDate(string $agency,string $date): array {$s=$this->pdo->prepare('SELECT * FROM search_history WHERE agency_id=? AND search_time BETWEEN ? AND ? ORDER BY search_time DESC');$s->execute([$agency,$date.' 00:00:00',$date.' 23:59:59']);return array_map(fn($r)=>searchHistoryRow($r),$s->fetchAll());}
     public function sort(string $agency,string $order): array {$sql=$order==='oldest'?'SELECT * FROM search_history WHERE agency_id=? ORDER BY search_time ASC':'SELECT * FROM search_history WHERE agency_id=? ORDER BY search_time DESC';$s=$this->pdo->prepare($sql);$s->execute([$agency]);return array_map(fn($r)=>searchHistoryRow($r),$s->fetchAll());}
+    public function delete(int $id, string $agencyId): bool
+{
+    $sql = "
+        DELETE FROM search_history
+        WHERE id = ?
+        AND agency_id = ?
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute([
+        $id,
+        $agencyId
+    ]);
+
+    return $stmt->rowCount() > 0;
+}
+public function deleteMultiple(
+    array $ids,
+    string $agencyId
+): int {
+
+    if (empty($ids)) {
+        return 0;
+    }
+
+    $placeholders = implode(
+        ',',
+        array_fill(0, count($ids), '?')
+    );
+
+    $sql = "
+        DELETE FROM search_history
+        WHERE id IN ($placeholders)
+        AND agency_id = ?
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $params = array_map(
+        'intval',
+        $ids
+    );
+
+    $params[] = $agencyId;
+
+    $stmt->execute($params);
+
+    return $stmt->rowCount();
+}
 }
