@@ -194,7 +194,167 @@ public function updateStatus(
 }
     public function updateVehicle(string $keyword,array $u): array { $r=$this->findVehicleRow($keyword); if(!$r) throw new RuntimeException('Vehicle Not Found with number: '.$keyword); $fields=['owner_name','owner_mobile','manufacture_name','model','color','engine_number','chassis_number','agency_name','agency_mobile','agency_mobile2','agency_manager','agency_id','vehicle_make','vehicle_type','branch','customer_area','customer_address','executive_name','allocation_dpd','repo_status','area_manager_name','area_manager_mobile_no','area_manager_email_id','contact_name2','contact_name2_designation','contact_name2_mobile_no','region_manager_name','region_manager_mobile_no','region_manager_email_id','finance','ref_letter','total_charges']; $map=['owner_name'=>'ownerName','owner_mobile'=>'ownerMobile','manufacture_name'=>'manufactureName','model'=>'model','color'=>'color','engine_number'=>'engineNumber','chassis_number'=>'chassisNumber','agency_name'=>'agencyName','agency_mobile'=>'agencyMobile','agency_mobile2'=>'agencyMobile2','agency_manager'=>'agencyManager','agency_id'=>'agencyId','vehicle_make'=>'vehicleMake','vehicle_type'=>'vehicleType','branch'=>'branch','customer_area'=>'customerArea','customer_address'=>'customerAddress','executive_name'=>'executiveName','allocation_dpd'=>'allocationDpd','repo_status'=>'repoStatus','area_manager_name'=>'areaManagerName','area_manager_mobile_no'=>'areaManagerMobileNo','area_manager_email_id'=>'areaManagerEmailId','contact_name2'=>'contactName2','contact_name2_designation'=>'contactName2Designation','contact_name2_mobile_no'=>'contactName2MobileNo','region_manager_name'=>'regionManagerName','region_manager_mobile_no'=>'regionManagerMobileNo','region_manager_email_id'=>'regionManagerEmailId','finance'=>'finance','ref_letter'=>'refLetter','total_charges'=>'totalCharges']; $sets=[];$params=[];foreach($fields as $f){$sets[]="$f=?";$params[]=$u[$map[$f]]??null;}$params[]=$r['repo_year'];$params[]=$r['repo_month'];$params[]=$r['loan_number'];$s=$this->pdo->prepare('UPDATE vehicle SET '.implode(',',$sets).' WHERE repo_year=? AND repo_month=? AND loan_number=?');$s->execute($params);return vehicleRow($this->findVehicleRow($keyword)); }
     public function deleteVehicle(string $keyword): void { $r=$this->findVehicleRow($keyword); if(!$r) throw new RuntimeException('Vehicle Not Found with number: '.$keyword); $s=$this->pdo->prepare('DELETE FROM vehicle WHERE repo_year=? AND repo_month=? AND loan_number=?');$s->execute([$r['repo_year'],$r['repo_month'],$r['loan_number']]); }
- public function searchVehicleNumbers(
+ 
+// =========================================================
+// DELETE MULTIPLE VEHICLES
+// =========================================================
+
+public function deleteMultipleVehicles(
+    array $vehicleNumbers,
+    string $agencyId
+): int {
+
+    if (empty($vehicleNumbers)) {
+        return 0;
+    }
+
+    $deletedCount = 0;
+
+    $this->pdo->beginTransaction();
+
+    try {
+
+        foreach ($vehicleNumbers as $vehicleNumber) {
+
+            $vehicleNumber =
+                trim((string)$vehicleNumber);
+
+            if ($vehicleNumber === '') {
+                continue;
+            }
+
+            // Find vehicle ONLY inside this agency
+            $sql = $this->baseSelect() . "
+                WHERE v.agency_id = ?
+                AND UPPER(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(
+                                    v.vehicle_number,
+                                    '-',
+                                    ''
+                                ),
+                                '/',
+                                ''
+                            ),
+                            '.',
+                            ''
+                        ),
+                        ' ',
+                        ''
+                    )
+                ) = UPPER(?)
+                LIMIT 1
+            ";
+
+            $stmt =
+                $this->pdo->prepare($sql);
+
+            $normalized =
+                strtoupper(
+                    str_replace(
+                        ['-', '/', '.', ' '],
+                        '',
+                        $vehicleNumber
+                    )
+                );
+
+            $stmt->execute([
+                $agencyId,
+                $normalized
+            ]);
+
+            $vehicle =
+                $stmt->fetch();
+
+            if (!$vehicle) {
+                continue;
+            }
+
+            // Composite primary key
+            $delete =
+                $this->pdo->prepare("
+                    DELETE FROM vehicle
+                    WHERE repo_year = ?
+                    AND repo_month = ?
+                    AND loan_number = ?
+                    AND agency_id = ?
+                ");
+
+            $delete->execute([
+                $vehicle['repo_year'],
+                $vehicle['repo_month'],
+                $vehicle['loan_number'],
+                $agencyId
+            ]);
+
+            if ($delete->rowCount() > 0) {
+
+                $deletedCount++;
+            }
+        }
+
+        $this->pdo->commit();
+
+        return $deletedCount;
+
+    } catch (Throwable $e) {
+
+        $this->pdo->rollBack();
+
+        throw $e;
+    }
+}
+
+
+// =========================================================
+// DELETE ALL VEHICLES BY UPLOAD DATE
+// =========================================================
+
+public function deleteVehiclesByUploadDate(
+    string $uploadDate,
+    string $agencyId
+): int {
+
+    $uploadDate =
+        trim($uploadDate);
+
+    if ($uploadDate === '') {
+
+        throw new RuntimeException(
+            'Upload date is required'
+        );
+    }
+
+    /*
+     * Handles:
+     *
+     * 2026-09-15
+     * 2026-09-15 10:20:30
+     *
+     * by comparing only DATE(upload_date).
+     */
+
+    $sql = "
+        DELETE FROM vehicle
+        WHERE agency_id = ?
+        AND DATE(upload_date) = ?
+    ";
+
+    $stmt =
+        $this->pdo->prepare($sql);
+
+    $stmt->execute([
+        $agencyId,
+        $uploadDate
+    ]);
+
+    return $stmt->rowCount();
+}
+
+
+    public function searchVehicleNumbers(
     string $keyword,
     string $agencyId
 ): array {

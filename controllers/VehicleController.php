@@ -108,6 +108,146 @@ public function count()
 }
     
  public function delete($k){$this->s->deleteVehicle($k);jsonResponse('Vehicle Deleted Successfully');}
+ 
+// =========================================================
+// DELETE MULTIPLE VEHICLES
+// =========================================================
+
+public function bulkDelete()
+{
+    $userId =
+        (int)queryParam(
+            'userId',
+            0
+        );
+
+    if ($userId <= 0) {
+
+        errorResponse(
+            'userId is required',
+            400
+        );
+
+        return;
+    }
+
+    $agencyId =
+        $this->userService
+            ->getUserAgencyId($userId);
+
+    if (!$agencyId) {
+
+        errorResponse(
+            'Agency not found for user',
+            404
+        );
+
+        return;
+    }
+
+    $body =
+        requestBody();
+
+    $vehicleNumbers =
+        $body['vehicleNumbers'] ?? [];
+
+    if (
+        !is_array($vehicleNumbers) ||
+        empty($vehicleNumbers)
+    ) {
+
+        errorResponse(
+            'vehicleNumbers are required',
+            400
+        );
+
+        return;
+    }
+
+    $deletedCount =
+        $this->s->deleteMultipleVehicles(
+            $vehicleNumbers,
+            $agencyId
+        );
+
+    jsonResponse([
+        'success' => true,
+        'deletedCount' => $deletedCount,
+        'message' =>
+            $deletedCount .
+            ' vehicle(s) deleted successfully'
+    ]);
+}
+
+
+// =========================================================
+// DELETE ALL VEHICLES BY UPLOAD DATE
+// =========================================================
+
+public function deleteByDate(
+    $date
+) {
+
+    $userId =
+        (int)queryParam(
+            'userId',
+            0
+        );
+
+    if ($userId <= 0) {
+
+        errorResponse(
+            'userId is required',
+            400
+        );
+
+        return;
+    }
+
+    $agencyId =
+        $this->userService
+            ->getUserAgencyId($userId);
+
+    if (!$agencyId) {
+
+        errorResponse(
+            'Agency not found for user',
+            404
+        );
+
+        return;
+    }
+
+    $date =
+        trim((string)$date);
+
+    if ($date === '') {
+
+        errorResponse(
+            'Upload date is required',
+            400
+        );
+
+        return;
+    }
+
+    $deletedCount =
+        $this->s->deleteVehiclesByUploadDate(
+            $date,
+            $agencyId
+        );
+
+    jsonResponse([
+        'success' => true,
+        'deletedCount' => $deletedCount,
+        'date' => $date,
+        'message' =>
+            $deletedCount .
+            ' vehicle(s) deleted successfully'
+    ]);
+}
+
+
  public function bulk(){jsonResponse($this->s->addAllVehicles(requestBody()));}
 public function search()
 {

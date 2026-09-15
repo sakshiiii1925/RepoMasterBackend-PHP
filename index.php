@@ -443,5 +443,17 @@ elseif (
         (int)$matches[1]
     );
 }
+elseif(
+    $method === 'POST' &&
+    $path === '/api/vehicles/bulk-delete'
+) {
+    $vehicle->bulkDelete();
+}
+elseif(
+    $method === 'DELETE' &&
+    preg_match('#^/api/vehicles/upload-date/([^/]+)$#', $path, $m)
+) {
+    $vehicle->deleteByDate($m[1]);
+}
  else errorResponse('API endpoint not found',404);
 } catch(Throwable $e) { errorResponse($e->getMessage(),500); }
