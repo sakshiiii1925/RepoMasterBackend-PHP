@@ -40,24 +40,18 @@ public function updateStatus(
         return null;
     }
 
-    // Vehicle primary key
-    $year = $r['repo_year'];
+    // Vehicle composite primary key
+    $year  = $r['repo_year'];
     $month = $r['repo_month'];
-    $loan = $r['loan_number'];
+    $loan  = $r['loan_number'];
 
     // Normalize status
     $status = trim($status);
 
-    /*
-     * IMPORTANT:
-     * userId should come from the logged-in Android user.
-     *
-     * If userId is available, save the ID.
-     * Otherwise keep NULL.
-     */
+    // Logged-in user ID
     $savedUserId = $userId > 0 ? $userId : null;
 
-    // 2. Update vehicle status
+    // 2. Update current status
     $sql = "
         UPDATE vehicle
         SET repo_status = ?
@@ -75,7 +69,10 @@ public function updateStatus(
         $loan
     ]);
 
-    // 3. Repo Mark
+    // =====================================================
+    // 3. REPO MARK
+    // =====================================================
+
     if (strcasecmp($status, 'repo mark') === 0) {
 
         $sql = "
@@ -98,8 +95,14 @@ public function updateStatus(
         ]);
     }
 
-    // 4. Parked
-    if (strcasecmp($status, 'Parked') === 0) {
+    // =====================================================
+    // 4. PARKED
+    // =====================================================
+
+    if (
+        strcasecmp($status, 'Parked') === 0 ||
+        strcasecmp($status, 'Parked in Godown') === 0
+    ) {
 
         $sql = "
             UPDATE vehicle
@@ -121,10 +124,41 @@ public function updateStatus(
         ]);
     }
 
-    // 5. Admin notification
+    // =====================================================
+    // 5. RELEASED
+    // =====================================================
+
+    if (strcasecmp($status, 'Released') === 0) {
+
+        $sql = "
+            UPDATE vehicle
+            SET
+                released_by = ?,
+                released_at = NOW()
+            WHERE repo_year = ?
+              AND repo_month = ?
+              AND loan_number = ?
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+
+        $stmt->execute([
+            $savedUserId,
+            $year,
+            $month,
+            $loan
+        ]);
+    }
+
+    // =====================================================
+    // 6. ADMIN NOTIFICATION
+    // =====================================================
+
     if (
         strcasecmp($status, 'repo mark') === 0 ||
-        strcasecmp($status, 'Parked') === 0
+        strcasecmp($status, 'Parked') === 0 ||
+        strcasecmp($status, 'Parked in Godown') === 0 ||
+        strcasecmp($status, 'Released') === 0
     ) {
 
         $agencyId = (string)($r['agency_id'] ?? '');
@@ -145,15 +179,16 @@ public function updateStatus(
         }
     }
 
-    // 6. Get latest vehicle data
+    // =====================================================
+    // 7. RETURN UPDATED VEHICLE
+    // =====================================================
+
     $updatedVehicle = $this->findVehicleRow($keyword);
 
     return $updatedVehicle
         ? vehicleRow($updatedVehicle)
         : null;
 }
-   
-
 
     private function vehicleData(array $v): array
     {

@@ -82,7 +82,43 @@ public function activityExcel($agency)
         $data
     );
 }
- public function monthlyExcel($agency){$rows=$this->s->monthly($agency,(string)queryParam('year',''),(string)queryParam('month',''));$data=array_map(fn($r)=>[$r['repoYear'],$r['repoMonth'],$r['totalVehicles'],$r['repoMarkedCount'],$r['parkedCount'],$r['releasedCount']],$rows);$this->excel->download('Monthly_Report.xlsx','Monthly Report',['Repo Year','Repo Month','Vehicles','Repo Marked','Parked','Released'],$data);}
+public function monthlyExcel($agency)
+{
+    $year = (string) queryParam('year', '');
+    $month = (string) queryParam('month', '');
+
+    $rows = $this->s->monthly(
+        $agency,
+        $year,
+        $month
+    );
+
+    $data = array_map(
+        fn($r) => [
+            $r['repoYear'],
+            $r['repoMonth'],
+            (int) $r['totalVehicles'],
+            (int) $r['repoMarkedCount'],
+            (int) $r['parkedCount'],
+            (int) $r['releasedCount']
+        ],
+        $rows
+    );
+
+    $this->excel->download(
+        'Monthly_Report.xlsx',
+        'Monthly Report',
+        [
+            'Year',
+            'Month',
+            'Vehicles',
+            'Repo Marked',
+            'Parked',
+            'Released'
+        ],
+        $data
+    );
+}
  public function userExcel(){ $r=$this->s->userReport((string)queryParam('userEmail',''));$this->excel->download('User_Report.xlsx','User Report',['Total Vehicle','Repo Marked','Parked','Released'],[[$r['totalVehicles'],$r['repoMarked'],$r['parked'],$r['released']]]); }
  public function yardExcel($yardId){$agency=(string)queryParam('agencyId','');$status=(string)queryParam('status','ALL');$rows=$this->s->yardVehicles((int)$yardId,$agency,$status);$data=[];$n=1;foreach($rows as $r)$data[]=[$n++,$r['vehicle_number']??'',$r['repo_status']??'',$r['yard_name']??''];$name=strtoupper($status)==='ALL'?'All':(strtolower($status)==='repo mark'?'Repo_Marked':(strtolower($status)==='parked'?'Parked':(strtolower($status)==='released'?'Released':str_replace(' ','_',$status))));$this->excel->download('Yard_Report_'.$name.'.xlsx','Yard Report',['Sr No','Vehicle Number','Status','Yard'],$data);}
 }

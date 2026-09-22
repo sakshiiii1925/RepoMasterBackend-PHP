@@ -3,7 +3,239 @@ class ReportService {
     public function __construct(private PDO $pdo) {}
     public function summary(string $agency): array { $s=$this->pdo->prepare("SELECT COUNT(*) total, SUM(CASE WHEN LOWER(repo_status)='open list' THEN 1 ELSE 0 END) openlist, SUM(CASE WHEN LOWER(repo_status)='contacted' THEN 1 ELSE 0 END) contacted, SUM(CASE WHEN LOWER(repo_status)='repo mark' THEN 1 ELSE 0 END) repoMark, SUM(CASE WHEN LOWER(repo_status)='parked' THEN 1 ELSE 0 END) parked, SUM(CASE WHEN LOWER(repo_status)='released' THEN 1 ELSE 0 END) released FROM vehicle WHERE agency_id=?");$s->execute([$agency]);$r=$s->fetch();return ['totalVehicles'=>(int)$r['total'],'openlist'=>(int)$r['openlist'],'contacted'=>(int)$r['contacted'],'repoMark'=>(int)$r['repoMark'],'parked'=>(int)$r['parked'],'released'=>(int)$r['released']]; }
     public function finance(string $agency,?string $finance,?string $branch): array {$sql="SELECT finance,branch,COUNT(*) totalVehicles,SUM(CASE WHEN LOWER(repo_status)='repo mark' THEN 1 ELSE 0 END) repoMarkedCount,SUM(CASE WHEN LOWER(repo_status)='parked' THEN 1 ELSE 0 END) parkedCount,SUM(CASE WHEN LOWER(repo_status)='released' THEN 1 ELSE 0 END) releasedCount FROM vehicle WHERE agency_id=?";$p=[$agency];if($finance!==null&&$finance!==''){ $sql.=' AND finance=?';$p[]=$finance;}if($branch!==null&&$branch!==''){ $sql.=' AND branch=?';$p[]=$branch;}$sql.=' GROUP BY finance,branch ORDER BY finance,branch';$s=$this->pdo->prepare($sql);$s->execute($p);return array_map(fn($r)=>['finance'=>$r['finance'],'branch'=>$r['branch'],'totalVehicles'=>(int)$r['totalVehicles'],'repoMarkedCount'=>(int)$r['repoMarkedCount'],'parkedCount'=>(int)$r['parkedCount'],'releasedCount'=>(int)$r['releasedCount']],$s->fetchAll());}
-    public function monthly(string $agency,string $year,string $month): array {$s=$this->pdo->prepare("SELECT repo_year,repo_month,COUNT(*) totalVehicles,SUM(CASE WHEN UPPER(repo_status)='REPO MARK' THEN 1 ELSE 0 END) repoMarkedCount,SUM(CASE WHEN UPPER(repo_status)='PARKED' THEN 1 ELSE 0 END) parkedCount,SUM(CASE WHEN UPPER(repo_status)='RELEASED' THEN 1 ELSE 0 END) releasedCount FROM vehicle WHERE agency_id=? AND repo_year=? AND repo_month=? GROUP BY repo_year,repo_month ORDER BY repo_year DESC,repo_month DESC");$s->execute([$agency,$year,$month]);return array_map(fn($r)=>['repoYear'=>$r['repo_year'],'repoMonth'=>$r['repo_month'],'totalVehicles'=>(int)$r['totalVehicles'],'repoMarkedCount'=>(int)$r['repoMarkedCount'],'parkedCount'=>(int)$r['parkedCount'],'releasedCount'=>(int)$r['releasedCount']],$s->fetchAll());}
+   public function monthly(
+    string $agency,
+    string $year,
+    string $month
+): array {
+
+    $month = str_pad(
+        trim($month),
+        2,
+        '0',
+        STR_PAD_LEFT
+    );
+
+    /*
+     * Selected calendar month.
+     *
+     * Example:
+     * year  = 2026
+     * month = 09
+     *
+     * start = 2026-09-01 00:00:00
+     * end   = 2026-10-01 00:00:00
+     */
+
+    $startDate = sprintf(
+        '%s-%s-01 00:00:00',
+        $year,
+        $month
+    );
+
+    $endDate = date(
+        'Y-m-d H:i:s',
+        strtotime($startDate . ' +1 month')
+    );
+
+    $sql = "
+        SELECT
+
+            ? AS reportYear,
+            ? AS reportMonth,
+
+            /*
+             * Total unique vehicles whose status
+             * changed during this calendar month.
+             */
+            COUNT(
+                DISTINCT CASE
+
+                    WHEN
+                        (
+                            v.repo_marked_at >= ?
+                            AND v.repo_marked_at < ?
+                        )
+                        OR
+                        (
+                            v.parked_at >= ?
+                            AND v.parked_at < ?
+                        )
+                        OR
+                        (
+                            v.released_at >= ?
+                            AND v.released_at < ?
+                        )
+
+                    THEN CONCAT(
+                        v.repo_year,
+                        '-',
+                        v.repo_month,
+                        '-',
+                        v.loan_number
+                    )
+
+                END
+            ) AS totalVehicles,
+
+            /*
+             * Repo Marked during selected month
+             */
+           COUNT(
+    DISTINCT CASE
+        WHEN
+            UPPER(TRIM(v.repo_status)) = 'repo mark'
+            AND v.repo_marked_at >= ?
+            AND v.repo_marked_at < ?
+        THEN CONCAT(
+            v.repo_year,
+            '-',
+            v.repo_month,
+            '-',
+            v.loan_number
+        )
+    END
+) AS repoMarkedCount,
+
+            /*
+             * Parked during selected month
+             */
+            COUNT(
+                DISTINCT CASE
+
+                    WHEN
+                        v.parked_at >= ?
+                        AND v.parked_at < ?
+
+                    THEN CONCAT(
+                        v.repo_year,
+                        '-',
+                        v.repo_month,
+                        '-',
+                        v.loan_number
+                    )
+
+                END
+            ) AS parkedCount,
+
+            /*
+             * Released during selected month
+             */
+            COUNT(
+                DISTINCT CASE
+
+                    WHEN
+                        v.released_at >= ?
+                        AND v.released_at < ?
+
+                    THEN CONCAT(
+                        v.repo_year,
+                        '-',
+                        v.repo_month,
+                        '-',
+                        v.loan_number
+                    )
+
+                END
+            ) AS releasedCount
+
+        FROM vehicle v
+
+        WHERE v.agency_id = ?
+
+          AND (
+
+                (
+                    v.repo_marked_at >= ?
+                    AND v.repo_marked_at < ?
+                )
+
+                OR
+
+                (
+                    v.parked_at >= ?
+                    AND v.parked_at < ?
+                )
+
+                OR
+
+                (
+                    v.released_at >= ?
+                    AND v.released_at < ?
+                )
+
+          )
+    ";
+
+    $params = [
+
+        // Display year/month
+        $year,
+        (int)$month,
+
+        // Total vehicles - repo mark
+        $startDate,
+        $endDate,
+
+        // Total vehicles - parked
+        $startDate,
+        $endDate,
+
+        // Total vehicles - released
+        $startDate,
+        $endDate,
+
+        // Repo Marked count
+        $startDate,
+        $endDate,
+
+        // Parked count
+        $startDate,
+        $endDate,
+
+        // Released count
+        $startDate,
+        $endDate,
+
+        // Agency
+        $agency,
+
+        // WHERE - repo mark
+        $startDate,
+        $endDate,
+
+        // WHERE - parked
+        $startDate,
+        $endDate,
+
+        // WHERE - released
+        $startDate,
+        $endDate
+    ];
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute($params);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return [[
+        'repoYear' => $year,
+        'repoMonth' => (int)$month,
+
+        'totalVehicles' =>
+            (int)($row['totalVehicles'] ?? 0),
+
+        'repoMarkedCount' =>
+            (int)($row['repoMarkedCount'] ?? 0),
+
+        'parkedCount' =>
+            (int)($row['parkedCount'] ?? 0),
+
+        'releasedCount' =>
+            (int)($row['releasedCount'] ?? 0)
+    ]];
+}
   public function userActivity(
     string $agency,
     ?string $fromDate = null,
@@ -88,50 +320,65 @@ class ReportService {
      * parked_by      = users.id
      */
     $actionSql = "
-        SELECT
-            u.id,
-            u.full_name,
-            u.email,
-            u.agency_id,
+    SELECT
+        u.id,
+        u.full_name,
+        u.email,
+        u.agency_id,
 
-            COUNT(
-                DISTINCT CASE
-                    WHEN v.repo_marked_by = u.id
-                    THEN CONCAT(
-                        v.repo_year,
-                        '-',
-                        v.repo_month,
-                        '-',
-                        v.loan_number
-                    )
-                END
-            ) AS repo_mark_count,
+        COUNT(
+            DISTINCT CASE
+                WHEN v.repo_marked_by = u.id
+                THEN CONCAT(
+                    v.repo_year,
+                    '-',
+                    v.repo_month,
+                    '-',
+                    v.loan_number
+                )
+            END
+        ) AS repo_mark_count,
 
-            COUNT(
-                DISTINCT CASE
-                    WHEN v.parked_by = u.id
-                    THEN CONCAT(
-                        v.repo_year,
-                        '-',
-                        v.repo_month,
-                        '-',
-                        v.loan_number
-                    )
-                END
-            ) AS parked_count
+        COUNT(
+            DISTINCT CASE
+                WHEN v.parked_by = u.id
+                THEN CONCAT(
+                    v.repo_year,
+                    '-',
+                    v.repo_month,
+                    '-',
+                    v.loan_number
+                )
+            END
+        ) AS parked_count,
 
-        FROM users u
+        COUNT(
+            DISTINCT CASE
+                WHEN v.released_by = u.id
+                THEN CONCAT(
+                    v.repo_year,
+                    '-',
+                    v.repo_month,
+                    '-',
+                    v.loan_number
+                )
+            END
+        ) AS released_count
 
-        LEFT JOIN vehicle v
-            ON v.agency_id = u.agency_id
-           AND (
-                v.repo_marked_by = u.id
-                OR
-                v.parked_by = u.id
-           )
+    FROM users u
 
-        WHERE u.agency_id = ?
-    ";
+    LEFT JOIN vehicle v
+        ON v.agency_id = u.agency_id
+       AND (
+            v.repo_marked_by = u.id
+            OR
+            v.parked_by = u.id
+            OR
+            v.released_by = u.id
+       )
+
+    WHERE u.agency_id = ?
+";
 
     $actionParams = [$agency];
 
@@ -151,83 +398,106 @@ class ReportService {
      * Parked uses parked_at.
      */
     if (
-        ($fromDate !== null && $fromDate !== '') ||
-        ($toDate !== null && $toDate !== '')
+    ($fromDate !== null && $fromDate !== '') ||
+    ($toDate !== null && $toDate !== '')
+) {
+
+    if (
+        $fromDate !== null &&
+        $fromDate !== '' &&
+        $toDate !== null &&
+        $toDate !== ''
     ) {
 
-        if (
-            $fromDate !== null &&
-            $fromDate !== '' &&
-            $toDate !== null &&
-            $toDate !== ''
-        ) {
-
-            $actionSql .= "
-                AND (
-                    (
-                        v.repo_marked_by = u.id
-                        AND v.repo_marked_at >= ?
-                        AND v.repo_marked_at < DATE_ADD(?, INTERVAL 1 DAY)
-                    )
-                    OR
-                    (
-                        v.parked_by = u.id
-                        AND v.parked_at >= ?
-                        AND v.parked_at < DATE_ADD(?, INTERVAL 1 DAY)
-                    )
+        $actionSql .= "
+            AND (
+                (
+                    v.repo_marked_by = u.id
+                    AND v.repo_marked_at >= ?
+                    AND v.repo_marked_at < DATE_ADD(?, INTERVAL 1 DAY)
                 )
-            ";
-
-            $actionParams[] = $fromDate . ' 00:00:00';
-            $actionParams[] = $toDate;
-            $actionParams[] = $fromDate . ' 00:00:00';
-            $actionParams[] = $toDate;
-
-        } elseif (
-            $fromDate !== null &&
-            $fromDate !== ''
-        ) {
-
-            $actionSql .= "
-                AND (
-                    (
-                        v.repo_marked_by = u.id
-                        AND v.repo_marked_at >= ?
-                    )
-                    OR
-                    (
-                        v.parked_by = u.id
-                        AND v.parked_at >= ?
-                    )
+                OR
+                (
+                    v.parked_by = u.id
+                    AND v.parked_at >= ?
+                    AND v.parked_at < DATE_ADD(?, INTERVAL 1 DAY)
                 )
-            ";
-
-            $actionParams[] = $fromDate . ' 00:00:00';
-            $actionParams[] = $fromDate . ' 00:00:00';
-
-        } elseif (
-            $toDate !== null &&
-            $toDate !== ''
-        ) {
-
-            $actionSql .= "
-                AND (
-                    (
-                        v.repo_marked_by = u.id
-                        AND v.repo_marked_at < DATE_ADD(?, INTERVAL 1 DAY)
-                    )
-                    OR
-                    (
-                        v.parked_by = u.id
-                        AND v.parked_at < DATE_ADD(?, INTERVAL 1 DAY)
-                    )
+                OR
+                (
+                    v.released_by = u.id
+                    AND v.released_at >= ?
+                    AND v.released_at < DATE_ADD(?, INTERVAL 1 DAY)
                 )
-            ";
+            )
+        ";
 
-            $actionParams[] = $toDate;
-            $actionParams[] = $toDate;
-        }
+        $actionParams[] = $fromDate . ' 00:00:00';
+        $actionParams[] = $toDate;
+
+        $actionParams[] = $fromDate . ' 00:00:00';
+        $actionParams[] = $toDate;
+
+        $actionParams[] = $fromDate . ' 00:00:00';
+        $actionParams[] = $toDate;
+
+    } elseif (
+        $fromDate !== null &&
+        $fromDate !== ''
+    ) {
+
+        $actionSql .= "
+            AND (
+                (
+                    v.repo_marked_by = u.id
+                    AND v.repo_marked_at >= ?
+                )
+                OR
+                (
+                    v.parked_by = u.id
+                    AND v.parked_at >= ?
+                )
+                OR
+                (
+                    v.released_by = u.id
+                    AND v.released_at >= ?
+                )
+            )
+        ";
+
+        $actionParams[] = $fromDate . ' 00:00:00';
+        $actionParams[] = $fromDate . ' 00:00:00';
+        $actionParams[] = $fromDate . ' 00:00:00';
+
+    } elseif (
+        $toDate !== null &&
+        $toDate !== ''
+    ) {
+
+        $actionSql .= "
+            AND (
+                (
+                    v.repo_marked_by = u.id
+                    AND v.repo_marked_at < DATE_ADD(?, INTERVAL 1 DAY)
+                )
+                OR
+                (
+                    v.parked_by = u.id
+                    AND v.parked_at < DATE_ADD(?, INTERVAL 1 DAY)
+                )
+                OR
+                (
+                    v.released_by = u.id
+                    AND v.released_at < DATE_ADD(?, INTERVAL 1 DAY)
+                )
+            )
+        ";
+
+        $actionParams[] = $toDate;
+        $actionParams[] = $toDate;
+        $actionParams[] = $toDate;
     }
+}
+           
 
     $actionSql .= "
         GROUP BY
@@ -257,12 +527,10 @@ class ReportService {
         );
 
         $actionsByEmail[$email] = [
-            'repoMarkedCount' =>
-                (int)$row['repo_mark_count'],
-
-            'parkedCount' =>
-                (int)$row['parked_count']
-        ];
+    'repoMarkedCount' => (int)$row['repo_mark_count'],
+    'parkedCount' => (int)$row['parked_count'],
+    'releasedCount' => (int)$row['released_count']
+];
     }
 
 
@@ -279,42 +547,27 @@ class ReportService {
             trim((string)$row['user_email'])
         );
 
-        $action = $actionsByEmail[$email] ?? [
-            'repoMarkedCount' => 0,
-            'parkedCount' => 0
-        ];
+       $action = $actionsByEmail[$email] ?? [
+    'repoMarkedCount' => 0,
+    'parkedCount' => 0,
+    'releasedCount' => 0
+];
+$result[] = [
+    'userName' => (string)$row['user_name'],
+    'userEmail' => (string)$row['user_email'],
+    'agencyId' => (string)$row['agency_id'],
 
-        $result[] = [
+    'totalSearches' => (int)$row['total_searches'],
 
-            'userName' =>
-                (string)$row['user_name'],
+    'repoMarkedCount' => (int)$action['repoMarkedCount'],
 
-            'userEmail' =>
-                (string)$row['user_email'],
+    'parkedCount' => (int)$action['parkedCount'],
 
-            'agencyId' =>
-                (string)$row['agency_id'],
+    'releasedCount' => (int)$action['releasedCount'],
 
-            'totalSearches' =>
-                (int)$row['total_searches'],
-
-            'repoMarkedCount' =>
-                (int)$action['repoMarkedCount'],
-
-            'parkedCount' =>
-                (int)$action['parkedCount'],
-
-            /*
-             * Released cannot currently be attributed
-             * to a specific user because vehicle does not
-             * have released_by / released_at.
-             */
-            'releasedCount' =>
-                0,
-
-            'lastSearchTime' =>
-                $row['last_search_time']
-        ];
+    'lastSearchTime' => $row['last_search_time']
+];
+            
     }
 
 
@@ -354,11 +607,12 @@ class ReportService {
          * an action.
          */
         if (
-            (int)$row['repo_mark_count'] === 0 &&
-            (int)$row['parked_count'] === 0
-        ) {
-            continue;
-        }
+    (int)$row['repo_mark_count'] === 0 &&
+    (int)$row['parked_count'] === 0 &&
+    (int)$row['released_count'] === 0
+) {
+    continue;
+}
 
         $result[] = [
 
@@ -380,8 +634,7 @@ class ReportService {
             'parkedCount' =>
                 (int)$row['parked_count'],
 
-            'releasedCount' =>
-                0,
+           'releasedCount' => (int)$row['released_count'],
 
             'lastSearchTime' =>
                 null
@@ -419,7 +672,228 @@ class ReportService {
 
     public function financeList(string $agency): array {$s=$this->pdo->prepare('SELECT DISTINCT finance FROM vehicle WHERE agency_id=? ORDER BY finance');$s->execute([$agency]);return array_values(array_filter(array_column($s->fetchAll(),'finance'),fn($x)=>$x!==null&&$x!==''));}
     public function branchList(string $agency,string $finance): array {$s=$this->pdo->prepare('SELECT DISTINCT branch FROM vehicle WHERE agency_id=? AND finance=? ORDER BY branch');$s->execute([$agency,$finance]);return array_values(array_filter(array_column($s->fetchAll(),'branch'),fn($x)=>$x!==null&&$x!==''));}
-    public function vehicles(string $agency,?string $finance,?string $branch,?string $year,?string $month,string $status): array {$sql='SELECT vehicle_number,owner_name,loan_number,repo_status FROM vehicle WHERE agency_id=?';$p=[$agency];foreach([['finance',$finance],['branch',$branch],['repo_year',$year],['repo_month',$month]] as [$c,$v]){if($v!==null&&$v!==''){$sql.=" AND $c=?";$p[]=$v;}}if(strtoupper($status)!=='ALL'){$sql.=' AND UPPER(repo_status)=UPPER(?)';$p[]=$status;}$s=$this->pdo->prepare($sql);$s->execute($p);return array_map(fn($r)=>['vehicleNumber'=>$r['vehicle_number'],'ownerName'=>$r['owner_name'],'loanNumber'=>$r['loan_number'],'repoStatus'=>$r['repo_status']],$s->fetchAll());}
+  public function vehicles(
+    string $agency,
+    ?string $finance,
+    ?string $branch,
+    ?string $year,
+    ?string $month,
+    string $status
+): array {
+
+    $sql = "
+        SELECT
+            v.vehicle_number,
+            v.owner_name,
+            v.loan_number,
+            v.repo_status
+        FROM vehicle v
+        WHERE v.agency_id = ?
+    ";
+
+    $params = [$agency];
+
+    /*
+     * =========================================================
+     * FINANCE REPORT
+     * =========================================================
+     *
+     * Finance report continues to work exactly as before.
+     */
+    if ($finance !== null && $finance !== '') {
+
+        $sql .= " AND v.finance = ?";
+        $params[] = $finance;
+    }
+
+    if ($branch !== null && $branch !== '') {
+
+        $sql .= " AND v.branch = ?";
+        $params[] = $branch;
+    }
+
+
+    /*
+     * =========================================================
+     * MONTHLY REPORT
+     * =========================================================
+     *
+     * IMPORTANT:
+     *
+     * Do NOT use:
+     *
+     *     v.repo_year
+     *     v.repo_month
+     *
+     * here.
+     *
+     * Monthly report is based on the date when the status
+     * was actually changed.
+     */
+    if (
+        $year !== null &&
+        $year !== '' &&
+        $month !== null &&
+        $month !== ''
+    ) {
+
+        $month = str_pad(
+            trim($month),
+            2,
+            '0',
+            STR_PAD_LEFT
+        );
+
+        $startDate = sprintf(
+            '%s-%s-01 00:00:00',
+            $year,
+            $month
+        );
+
+        $endDate = date(
+            'Y-m-d H:i:s',
+            strtotime($startDate . ' +1 month')
+        );
+
+
+        /*
+         * -----------------------------------------------------
+         * REPO MARK
+         * -----------------------------------------------------
+         */
+        if (strcasecmp($status, 'REPO MARK') === 0) {
+
+            $sql .= "
+                AND v.repo_marked_at >= ?
+                AND v.repo_marked_at < ?
+            ";
+
+            $params[] = $startDate;
+            $params[] = $endDate;
+        }
+
+
+        /*
+         * -----------------------------------------------------
+         * PARKED
+         * -----------------------------------------------------
+         */
+        elseif (strcasecmp($status, 'PARKED') === 0) {
+
+            $sql .= "
+                AND v.parked_at >= ?
+                AND v.parked_at < ?
+            ";
+
+            $params[] = $startDate;
+            $params[] = $endDate;
+        }
+
+
+        /*
+         * -----------------------------------------------------
+         * RELEASED
+         * -----------------------------------------------------
+         */
+        elseif (strcasecmp($status, 'RELEASED') === 0) {
+
+            $sql .= "
+                AND v.released_at >= ?
+                AND v.released_at < ?
+            ";
+
+            $params[] = $startDate;
+            $params[] = $endDate;
+        }
+
+
+        /*
+         * -----------------------------------------------------
+         * ALL VEHICLES
+         * -----------------------------------------------------
+         *
+         * Vehicle changed to ANY tracked status during
+         * selected month.
+         */
+        elseif (strtoupper($status) === 'ALL') {
+
+            $sql .= "
+                AND (
+                    (
+                        v.repo_marked_at >= ?
+                        AND v.repo_marked_at < ?
+                    )
+                    OR
+                    (
+                        v.parked_at >= ?
+                        AND v.parked_at < ?
+                    )
+                    OR
+                    (
+                        v.released_at >= ?
+                        AND v.released_at < ?
+                    )
+                )
+            ";
+
+            $params[] = $startDate;
+            $params[] = $endDate;
+
+            $params[] = $startDate;
+            $params[] = $endDate;
+
+            $params[] = $startDate;
+            $params[] = $endDate;
+        }
+    }
+
+
+    /*
+     * =========================================================
+     * OLD FINANCE STATUS FILTER
+     * =========================================================
+     *
+     * Only apply this when a Monthly date filter was not used.
+     */
+    if (
+        !(
+            $year !== null &&
+            $year !== '' &&
+            $month !== null &&
+            $month !== ''
+        )
+        &&
+        strtoupper($status) !== 'ALL'
+    ) {
+
+        $sql .= "
+            AND UPPER(TRIM(v.repo_status))
+                = UPPER(TRIM(?))
+        ";
+
+        $params[] = $status;
+    }
+
+
+    $sql .= "
+        ORDER BY v.vehicle_number
+    ";
+
+
+    $stmt = $this->pdo->prepare($sql);
+
+    $stmt->execute($params);
+
+    return array_map(
+        fn($r) => [
+            'vehicleNumber' => $r['vehicle_number'],
+            'ownerName'     => $r['owner_name'],
+            'loanNumber'    => $r['loan_number'],
+            'repoStatus'    => $r['repo_status']
+        ],
+        $stmt->fetchAll()
+    );
+}
    public function userReport(string $email): array
 {
     $email = trim($email);
