@@ -672,7 +672,8 @@ $result[] = [
 
     public function financeList(string $agency): array {$s=$this->pdo->prepare('SELECT DISTINCT finance FROM vehicle WHERE agency_id=? ORDER BY finance');$s->execute([$agency]);return array_values(array_filter(array_column($s->fetchAll(),'finance'),fn($x)=>$x!==null&&$x!==''));}
     public function branchList(string $agency,string $finance): array {$s=$this->pdo->prepare('SELECT DISTINCT branch FROM vehicle WHERE agency_id=? AND finance=? ORDER BY branch');$s->execute([$agency,$finance]);return array_values(array_filter(array_column($s->fetchAll(),'branch'),fn($x)=>$x!==null&&$x!==''));}
-  public function vehicles(
+ //vehicles
+    public function vehicles(
     string $agency,
     ?string $finance,
     ?string $branch,
@@ -693,13 +694,13 @@ $result[] = [
 
     $params = [$agency];
 
+
     /*
      * =========================================================
-     * FINANCE REPORT
+     * FINANCE FILTER
      * =========================================================
-     *
-     * Finance report continues to work exactly as before.
      */
+
     if ($finance !== null && $finance !== '') {
 
         $sql .= " AND v.finance = ?";
@@ -715,21 +716,19 @@ $result[] = [
 
     /*
      * =========================================================
-     * MONTHLY REPORT
+     * MONTHLY REPORT VEHICLE DETAILS
      * =========================================================
      *
-     * IMPORTANT:
+     * When the user clicks a monthly count:
      *
-     * Do NOT use:
+     * Repo Mark -> show CURRENT repo mark vehicles
+     * Parked    -> show CURRENT parked vehicles
+     * Released  -> show CURRENT released vehicles
      *
-     *     v.repo_year
-     *     v.repo_month
-     *
-     * here.
-     *
-     * Monthly report is based on the date when the status
-     * was actually changed.
+     * ALL       -> show vehicles that had any tracked
+     *              action during the selected month.
      */
+
     if (
         $year !== null &&
         $year !== '' &&
@@ -737,39 +736,23 @@ $result[] = [
         $month !== ''
     ) {
 
-        $month = str_pad(
-            trim($month),
-            2,
-            '0',
-            STR_PAD_LEFT
-        );
-
-        $startDate = sprintf(
-            '%s-%s-01 00:00:00',
-            $year,
-            $month
-        );
-
-        $endDate = date(
-            'Y-m-d H:i:s',
-            strtotime($startDate . ' +1 month')
-        );
-
-
         /*
          * -----------------------------------------------------
          * REPO MARK
          * -----------------------------------------------------
+         *
+         * IMPORTANT:
+         * Do NOT use repo_marked_at here.
+         *
+         * We want only vehicles whose CURRENT status
+         * is repo mark.
          */
-        if (strcasecmp($status, 'REPO MARK') === 0) {
+
+        if (strcasecmp(trim($status), 'REPO MARK') === 0) {
 
             $sql .= "
-                AND v.repo_marked_at >= ?
-                AND v.repo_marked_at < ?
+                AND UPPER(TRIM(v.repo_status)) = 'REPO MARK'
             ";
-
-            $params[] = $startDate;
-            $params[] = $endDate;
         }
 
 
@@ -778,15 +761,12 @@ $result[] = [
          * PARKED
          * -----------------------------------------------------
          */
-        elseif (strcasecmp($status, 'PARKED') === 0) {
+
+        elseif (strcasecmp(trim($status), 'PARKED') === 0) {
 
             $sql .= "
-                AND v.parked_at >= ?
-                AND v.parked_at < ?
+                AND UPPER(TRIM(v.repo_status)) = 'PARKED'
             ";
-
-            $params[] = $startDate;
-            $params[] = $endDate;
         }
 
 
@@ -795,27 +775,42 @@ $result[] = [
          * RELEASED
          * -----------------------------------------------------
          */
-        elseif (strcasecmp($status, 'RELEASED') === 0) {
+
+        elseif (strcasecmp(trim($status), 'RELEASED') === 0) {
 
             $sql .= "
-                AND v.released_at >= ?
-                AND v.released_at < ?
+                AND UPPER(TRIM(v.repo_status)) = 'RELEASED'
             ";
-
-            $params[] = $startDate;
-            $params[] = $endDate;
         }
 
 
         /*
          * -----------------------------------------------------
-         * ALL VEHICLES
+         * ALL
          * -----------------------------------------------------
          *
-         * Vehicle changed to ANY tracked status during
-         * selected month.
+         * For ALL, keep the existing monthly action logic.
          */
-        elseif (strtoupper($status) === 'ALL') {
+
+        elseif (strtoupper(trim($status)) === 'ALL') {
+
+            $month = str_pad(
+                trim($month),
+                2,
+                '0',
+                STR_PAD_LEFT
+            );
+
+            $startDate = sprintf(
+                '%s-%s-01 00:00:00',
+                $year,
+                $month
+            );
+
+            $endDate = date(
+                'Y-m-d H:i:s',
+                strtotime($startDate . ' +1 month')
+            );
 
             $sql .= "
                 AND (
@@ -850,21 +845,14 @@ $result[] = [
 
     /*
      * =========================================================
-     * OLD FINANCE STATUS FILTER
+     * FINANCE REPORT / NORMAL REPORT
      * =========================================================
      *
-     * Only apply this when a Monthly date filter was not used.
+     * If there is NO monthly year/month filter,
+     * use the current repo_status.
      */
-    if (
-        !(
-            $year !== null &&
-            $year !== '' &&
-            $month !== null &&
-            $month !== ''
-        )
-        &&
-        strtoupper($status) !== 'ALL'
-    ) {
+
+    elseif (strtoupper(trim($status)) !== 'ALL') {
 
         $sql .= "
             AND UPPER(TRIM(v.repo_status))
@@ -875,14 +863,33 @@ $result[] = [
     }
 
 
+    /*
+     * =========================================================
+     * ORDER
+     * =========================================================
+     */
+
     $sql .= "
         ORDER BY v.vehicle_number
     ";
 
 
+    /*
+     * =========================================================
+     * EXECUTE
+     * =========================================================
+     */
+
     $stmt = $this->pdo->prepare($sql);
 
     $stmt->execute($params);
+
+
+    /*
+     * =========================================================
+     * RESPONSE
+     * =========================================================
+     */
 
     return array_map(
         fn($r) => [
@@ -891,9 +898,10 @@ $result[] = [
             'loanNumber'    => $r['loan_number'],
             'repoStatus'    => $r['repo_status']
         ],
-        $stmt->fetchAll()
+        $stmt->fetchAll(PDO::FETCH_ASSOC)
     );
 }
+
    public function userReport(string $email): array
 {
     $email = trim($email);
