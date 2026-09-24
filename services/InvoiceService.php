@@ -2,52 +2,296 @@
 require_once __DIR__ . '/../helpers/mappers.php';
 class InvoiceService {
     public function __construct(private PDO $pdo) {}
-    public function create(
-        array $i): array {
-         $map=['invoiceNumber'=>'invoice_number',
-         'invoiceDate'=>'invoice_date',
-         'repoYear'=>'repo_year',
-         'repoMonth'=>'repo_month',
-         'invoiceBank'=>'invoice_bank',
-         'invoiceAddress'=>'invoice_address',
-         'loanNumber'=>'loan_number',
-         'customerName'=>'customer_name',
-         'vehicleNumber'=>'vehicle_number',
-         'vehicleType'=>'vehicle_type',
-         'vehicleMake'=>'vehicle_make',
-         'vehicleModel'=>'vehicle_model',
-         'engineNumber'=>'engine_number',
-         'chassisNumber'=>'chassis_number',
-         'description1'=>'description_1',
-         'basic1Amount'=>'basic1_amount',
-         'description2'=>'description_2',
-         'basic2Amount'=>'basic2_amount',
-         'cgst'=>'cgst',
-         'sgst'=>'sgst',
-         'igst'=>'igst',
-         'totalBasic'=>'total_basic',
-         'gst'=>'gst',
-         'invoiceTotal'=>'invoice_total',
-         'remarks'=>'remarks',
-         'createdBy'=>'created_by',
-         'createdDate'=>'created_date',
-         'gstPercent'=>'gst_percent',
-         'dpdChargePercent' => 'dpd_charge_percent',
-         'paymentDate'=>'payment_date',
-         'paymentReceived'=>'payment_received',
-         'paymentStatus'=>'payment_status',
-         'agencyId'=>'agency_id'];
-         $cols=[];
-         $vals=[];
-         $params=[];
-         foreach($map as $json=>$db){$cols[]=$db;
-         $vals[]='?';
-         $params[]=$i[$json]??null;
-         }$s=$this->pdo->prepare('INSERT INTO invoice (
-         '.implode(',',$cols).') VALUES ('.implode(',',$vals).')');$s->execute(
-            $params);return $this->get(
-                (int)$this->pdo->lastInsertId());
-                 }
+    
+public function create(array $i): array
+{
+    /*
+     * -----------------------------------------
+     * GENERATE INVOICE NUMBER
+     * -----------------------------------------
+     *
+     * Format:
+     *
+     * INV-2026-000001
+     * INV-2026-000002
+     * INV-2026-000003
+     *
+     * The number is generated on the server,
+     * so Android does not need to enter it.
+     */
+
+    $year = date('Y');
+
+    $this->pdo->beginTransaction();
+
+    try {
+
+        /*
+         * Get the latest invoice number for
+         * the current year.
+         */
+        $stmt = $this->pdo->prepare(
+            "SELECT invoice_number
+             FROM invoice
+             WHERE invoice_number LIKE ?
+             ORDER BY id DESC
+             LIMIT 1
+             FOR UPDATE"
+        );
+
+        $stmt->execute([
+            "INV-{$year}-%"
+        ]);
+
+        $lastInvoiceNumber =
+            $stmt->fetchColumn();
+
+
+        /*
+         * Calculate next sequence.
+         */
+        $nextNumber = 1;
+
+        if ($lastInvoiceNumber) {
+
+            /*
+             * Example:
+             *
+             * INV-2026-000025
+             *
+             * Extract:
+             *
+             * 000025
+             */
+
+            $parts =
+                explode(
+                    '-',
+                    $lastInvoiceNumber
+                );
+
+            if (count($parts) >= 3) {
+
+                $lastSequence =
+                    (int)$parts[2];
+
+                $nextNumber =
+                    $lastSequence + 1;
+            }
+        }
+
+
+        /*
+         * Create invoice number.
+         *
+         * Example:
+         *
+         * INV-2026-000026
+         */
+        $invoiceNumber =
+            sprintf(
+                'INV-%s-%06d',
+                $year,
+                $nextNumber
+            );
+
+
+        /*
+         * -----------------------------------------
+         * FIELD MAPPING
+         * -----------------------------------------
+         */
+
+        $map = [
+
+            'invoiceNumber' =>
+                'invoice_number',
+
+            'invoiceDate' =>
+                'invoice_date',
+
+            'repoYear' =>
+                'repo_year',
+
+            'repoMonth' =>
+                'repo_month',
+
+            'invoiceBank' =>
+                'invoice_bank',
+
+            'invoiceAddress' =>
+                'invoice_address',
+
+            'loanNumber' =>
+                'loan_number',
+
+            'customerName' =>
+                'customer_name',
+
+            'vehicleNumber' =>
+                'vehicle_number',
+
+            'vehicleType' =>
+                'vehicle_type',
+
+            'vehicleMake' =>
+                'vehicle_make',
+
+            'vehicleModel' =>
+                'vehicle_model',
+
+            'engineNumber' =>
+                'engine_number',
+
+            'chassisNumber' =>
+                'chassis_number',
+
+            'description1' =>
+                'description_1',
+
+            'basic1Amount' =>
+                'basic1_amount',
+
+            'description2' =>
+                'description_2',
+
+            'basic2Amount' =>
+                'basic2_amount',
+
+            'cgst' =>
+                'cgst',
+
+            'sgst' =>
+                'sgst',
+
+            'igst' =>
+                'igst',
+
+            'totalBasic' =>
+                'total_basic',
+
+            'gst' =>
+                'gst',
+
+            'invoiceTotal' =>
+                'invoice_total',
+
+            'remarks' =>
+                'remarks',
+
+            'createdBy' =>
+                'created_by',
+
+            'createdDate' =>
+                'created_date',
+
+            'gstPercent' =>
+                'gst_percent',
+
+            'dpdChargePercent' =>
+                'dpd_charge_percent',
+
+            'paymentDate' =>
+                'payment_date',
+
+            'paymentReceived' =>
+                'payment_received',
+
+            'paymentStatus' =>
+                'payment_status',
+
+            'agencyId' =>
+                'agency_id'
+        ];
+
+
+        /*
+         * -----------------------------------------
+         * PREPARE INSERT
+         * -----------------------------------------
+         */
+
+        $cols = [];
+        $vals = [];
+        $params = [];
+
+
+        foreach ($map as $json => $db) {
+
+            $cols[] = $db;
+            $vals[] = '?';
+
+            /*
+             * IMPORTANT:
+             *
+             * Always use our generated
+             * invoice number.
+             */
+            if ($json === 'invoiceNumber') {
+
+                $params[] =
+                    $invoiceNumber;
+
+            } else {
+
+                $params[] =
+                    $i[$json] ?? null;
+            }
+        }
+
+
+        /*
+         * -----------------------------------------
+         * INSERT
+         * -----------------------------------------
+         */
+
+        $sql =
+            'INSERT INTO invoice (' .
+            implode(',', $cols) .
+            ') VALUES (' .
+            implode(',', $vals) .
+            ')';
+
+        $insert =
+            $this->pdo->prepare($sql);
+
+        $insert->execute($params);
+
+
+        /*
+         * Get newly created invoice ID.
+         */
+        $invoiceId =
+            (int)$this->pdo->lastInsertId();
+
+
+        /*
+         * Commit transaction.
+         */
+        $this->pdo->commit();
+
+
+        /*
+         * Return complete invoice.
+         */
+        return $this->get(
+            $invoiceId
+        );
+
+    } catch (Throwable $e) {
+
+        if ($this->pdo->inTransaction()) {
+
+            $this->pdo->rollBack();
+        }
+
+        throw $e;
+    }
+}
+
+
+         
    public function get(int $id): array
 {
     $sql = "
