@@ -5,7 +5,7 @@ require_once __DIR__ . '/../helpers/mappers.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
-
+date_default_timezone_set('Asia/Kolkata');
 class ExcelService
 {
     private array $headers = [
@@ -324,8 +324,10 @@ class ExcelService
 
                     'upload_by' => $v[36],
 
-                    'upload_date' =>
-                        $this->dateValue($v[37]),
+                   'upload_date' =>
+    trim($v[37]) === ''
+        ? date('Y-m-d')
+        : $this->dateValue($v[37]),
 
                     'allocation_dpd' => $v[38],
                     'repo_status' => $v[39]
@@ -445,4 +447,5 @@ class ExcelService
             );
         }
     }
+    
 }
