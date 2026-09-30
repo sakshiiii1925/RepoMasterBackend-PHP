@@ -19,6 +19,8 @@ require_once __DIR__ . '/services/SearchHistoryService.php';
 require_once __DIR__ . '/services/ReportService.php';
 require_once __DIR__ . '/services/ExcelService.php';
 require_once __DIR__ . '/services/ExcelReportService.php';
+require_once __DIR__ . '/services/PdfReportService.php';
+require_once __DIR__ . '/services/InvoicePdfService.php';
 require_once __DIR__ .
     '/controllers/RepoImageController.php';
 require_once __DIR__ . '/controllers/AdminPaymentController.php';
@@ -70,9 +72,10 @@ new VehicleController(
     new ExcelService($pdo),
     $userService
 );
-    $invoice=
-new InvoiceController(
-    new InvoiceService($pdo));
+   $invoice = new InvoiceController(
+    new InvoiceService($pdo),
+    new InvoicePdfService()
+);
 $invoicePayment =
 new InvoicePaymentController(
         new InvoicePaymentService($pdo)
@@ -93,7 +96,11 @@ $history =
         new SearchHistoryService($pdo),
         $userService
     );
-$report=new ReportController(new ReportService($pdo),new ExcelReportService());
+$report = new ReportController(
+    new ReportService($pdo),
+    new ExcelReportService(),
+    new PdfReportService()
+);
 $excel=new ExcelController();
 $repoImage =
 new RepoImageController(
@@ -282,7 +289,55 @@ elseif(
  elseif($method==='GET'&&preg_match('#^/api/reports/finance/excel/([^/]+)$#',$path,$m))$report->financeExcel($m[1]);
  elseif($method==='GET'&&preg_match('#^/api/reports/user-activity/excel/([^/]+)$#',$path,$m))$report->activityExcel($m[1]);
  elseif($method==='GET'&&preg_match('#^/api/reports/monthly/excel/([^/]+)$#',$path,$m))$report->monthlyExcel($m[1]);
- 
+ // ===============================
+// REPORT PDF DOWNLOADS
+// ===============================
+
+elseif(
+    $method === 'GET' &&
+    $path === '/api/reports/user/pdf'
+)
+    $report->userPdf();
+
+elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/reports/finance/pdf/([^/]+)$#',
+        $path,
+        $m
+    )
+)
+    $report->financePdf($m[1]);
+
+elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/reports/user-activity/pdf/([^/]+)$#',
+        $path,
+        $m
+    )
+)
+    $report->activityPdf($m[1]);
+
+elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/reports/monthly/pdf/([^/]+)$#',
+        $path,
+        $m
+    )
+)
+    $report->monthlyPdf($m[1]);
+
+elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/reports/vehicles/pdf/([^/]+)$#',
+        $path,
+        $m
+    )
+)
+    $report->vehiclesPdf($m[1]);
 
 // ===============================
 // ADMIN NOTIFICATIONS
@@ -328,6 +383,15 @@ elseif(
     $path === '/api/admin/payment/users'
 )
     $adminPayment->users();
+    elseif(
+    $method === 'GET' &&
+    preg_match(
+        '#^/api/invoices/(\d+)/pdf$#',
+        $path,
+        $m
+    )
+)
+    $invoice->pdf($m[1]);
 
 elseif(
     $method === 'GET' &&

@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../helpers/response.php';
-class InvoiceController {public function __construct(private InvoiceService $s){}
+class InvoiceController {public function __construct(private InvoiceService $s,private InvoicePdfService $pdf){}
 //add
 public function add()
 {
@@ -45,6 +45,37 @@ public function updateDpdCharge(int $id)
             $id,
             requestBody()
         )
+    );
+}
+public function pdf($id)
+{
+    $invoice = $this->s->get((int)$id);
+
+    if (!$invoice) {
+        throw new InvalidArgumentException(
+            'Invoice not found'
+        );
+    }
+
+    $invoiceNumber =
+        $invoice['invoiceNumber']
+        ?? $invoice['invoice_number']
+        ?? $id;
+
+    $safeInvoiceNumber = preg_replace(
+        '/[^A-Za-z0-9_-]/',
+        '_',
+        (string)$invoiceNumber
+    );
+
+    $filename =
+        'Invoice_' .
+        $safeInvoiceNumber .
+        '.pdf';
+
+    $this->pdf->download(
+        $invoice,
+        $filename
     );
 }
 }

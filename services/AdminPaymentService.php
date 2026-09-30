@@ -332,13 +332,28 @@ if ($remainingAmount <= 0) {
 // VALIDATE PAYMENT AMOUNT
 // ==========================================
 
-$paymentAmount = isset($data['payment_amount'])
-    ? (float)$data['payment_amount']
-    : $remainingAmount;
+if (
+    !array_key_exists('payment_amount', $data) ||
+    $data['payment_amount'] === '' ||
+    $data['payment_amount'] === null
+) {
+    throw new InvalidArgumentException(
+        'payment_amount is required'
+    );
+}
+
+$paymentAmount = (float)$data['payment_amount'];
 
 if ($paymentAmount <= 0) {
     throw new InvalidArgumentException(
         'payment_amount must be greater than 0'
+    );
+}
+
+if ($paymentAmount > $remainingAmount) {
+    throw new InvalidArgumentException(
+        'Payment amount cannot be greater than remaining amount: '
+        . number_format($remainingAmount, 2)
     );
 }
 
