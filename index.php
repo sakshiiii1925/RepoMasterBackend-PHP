@@ -104,7 +104,8 @@ $report = new ReportController(
 $excel=new ExcelController();
 $repoImage =
 new RepoImageController(
-    new RepoImageService($pdo)
+    new RepoImageService($pdo),
+    $pdo
 );
 
 $method=$_SERVER['REQUEST_METHOD'];
@@ -150,7 +151,17 @@ try {
  elseif($method==='GET'&&$path==='/api/admin/search-users')$user->search();
  elseif($method==='DELETE'&&preg_match('#^/api/admin/delete-user/(\d+)$#',$path,$m))$user->delete($m[1]);
  elseif($method==='GET'&&$path==='/api/admin/approved-users')$user->approved();
- elseif($method==='GET'&&$path==='/api/pending/count')$user->pendingCount();
+ elseif(
+    $method === 'GET' &&
+    $path === '/api/pending/count'
+)
+    $user->pendingCount();
+
+elseif(
+    $method === 'GET' &&
+    $path === '/api/users/count'
+)
+    $user->userCount();
  elseif($method==='GET'&&$path==='/api/admin/download-template')$excel->template();
  elseif($method==='GET'&&$path==='/api/vehicles')$vehicle->list();
  elseif($method==='POST'&&$path==='/api/vehicles')$vehicle->add();

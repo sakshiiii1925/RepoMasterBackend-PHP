@@ -3,11 +3,84 @@
 class RepoImageController
 {
     private RepoImageService $service;
+    private PDO $pdo;
 
     public function __construct(
-        RepoImageService $service
+        RepoImageService $service,
+        PDO $pdo
     ) {
         $this->service = $service;
+        $this->pdo = $pdo;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Get user's agency from database
+    |--------------------------------------------------------------------------
+    */
+
+    private function getUserAgencyId(
+        string $userEmail
+    ): string {
+
+        $userEmail = trim($userEmail);
+
+        if ($userEmail === '') {
+            throw new Exception(
+                'User email is required.'
+            );
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT
+                agency_id,
+                status
+            FROM users
+            WHERE email = ?
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            $userEmail
+        ]);
+
+        $user =
+            $stmt->fetch(
+                PDO::FETCH_ASSOC
+            );
+
+        if (!$user) {
+            throw new Exception(
+                'User not found.'
+            );
+        }
+
+        if (
+            strcasecmp(
+                (string)$user['status'],
+                'ACTIVE'
+            ) !== 0
+        ) {
+            throw new Exception(
+                'User is not active.'
+            );
+        }
+
+        $agencyId = trim(
+            (string)(
+                $user['agency_id']
+                ?? ''
+            )
+        );
+
+        if ($agencyId === '') {
+            throw new Exception(
+                'User is not assigned to an Agency ID.'
+            );
+        }
+
+        return $agencyId;
     }
 
 
@@ -23,9 +96,12 @@ class RepoImageController
 
         try {
 
-            $vehicleNumber = trim(
-                urldecode($vehicleNumber)
-            );
+            $vehicleNumber =
+                trim(
+                    urldecode(
+                        $vehicleNumber
+                    )
+                );
 
             if ($vehicleNumber === '') {
 
@@ -38,9 +114,10 @@ class RepoImageController
             }
 
 
-            $status = isset($_POST['status'])
-                ? trim($_POST['status'])
-                : '';
+            $status =
+                isset($_POST['status'])
+                    ? trim($_POST['status'])
+                    : '';
 
 
             if ($status === '') {
@@ -54,25 +131,16 @@ class RepoImageController
             }
 
 
-            $userName = isset($_POST['user_name'])
-                ? trim($_POST['user_name'])
-                : '';
+            $userName =
+                isset($_POST['user_name'])
+                    ? trim($_POST['user_name'])
+                    : '';
 
 
-            $userEmail = isset($_POST['user_email'])
-                ? trim($_POST['user_email'])
-                : '';
-
-
-            if ($userName === '') {
-
-                errorResponse(
-                    'User name is required',
-                    400
-                );
-
-                return;
-            }
+            $userEmail =
+                isset($_POST['user_email'])
+                    ? trim($_POST['user_email'])
+                    : '';
 
 
             if ($userEmail === '') {
@@ -85,6 +153,13 @@ class RepoImageController
                 return;
             }
 
+
+            /*
+             * userName can be empty.
+             *
+             * RepoImageService will get the
+             * correct name from the database.
+             */
 
             $result =
                 $this->service->uploadImages(
@@ -118,7 +193,7 @@ class RepoImageController
 
     /*
     |--------------------------------------------------------------------------
-    | Admin - List uploaded images
+    | Admin/User - List uploaded images
     |--------------------------------------------------------------------------
     */
 
@@ -126,8 +201,50 @@ class RepoImageController
     {
         try {
 
+            /*
+             * Get email from request.
+             *
+             * Use the same user_email that
+             * your existing Android/web login
+             * already has.
+             */
+
+            $userEmail =
+                isset($_GET['user_email'])
+                    ? trim($_GET['user_email'])
+                    : '';
+
+            if ($userEmail === '') {
+
+                errorResponse(
+                    'User email is required',
+                    400
+                );
+
+                return;
+            }
+
+
+            /*
+             * Get REAL agency from database.
+             */
+
+            $agencyId =
+                $this->getUserAgencyId(
+                    $userEmail
+                );
+
+
+            /*
+             * Only same-agency records
+             * will be returned.
+             */
+
             $result =
-                $this->service->getUploadedImageList();
+                $this->service
+                    ->getUploadedImageList(
+                        $agencyId
+                    );
 
 
             http_response_code(200);
@@ -153,7 +270,7 @@ class RepoImageController
 
     /*
     |--------------------------------------------------------------------------
-    | Admin - Get uploaded image details
+    | Get uploaded image details
     |--------------------------------------------------------------------------
     */
 
@@ -163,10 +280,58 @@ class RepoImageController
 
         try {
 
-            $result =
-                $this->service->getUploadedImagesById(
-                    $id
+            if ($id <= 0) {
+
+                errorResponse(
+                    'Invalid uploaded image ID',
+                    400
                 );
+
+                return;
+            }
+
+
+            $userEmail =
+                isset($_GET['user_email'])
+                    ? trim($_GET['user_email'])
+                    : '';
+
+
+            if ($userEmail === '') {
+
+                errorResponse(
+                    'User email is required',
+                    400
+                );
+
+                return;
+            }
+
+
+            /*
+             * Get real agency.
+             */
+
+            $agencyId =
+                $this->getUserAgencyId(
+                    $userEmail
+                );
+
+
+            /*
+             * ID + agency together.
+             *
+             * Therefore Agency 2 cannot access
+             * an Agency 1 image even if it knows
+             * the image ID.
+             */
+
+            $result =
+                $this->service
+                    ->getUploadedImagesById(
+                        $id,
+                        $agencyId
+                    );
 
 
             if (!$result) {
@@ -199,66 +364,100 @@ class RepoImageController
             );
         }
     }
+
+
     /*
-|--------------------------------------------------------------------------
-| Admin - Delete uploaded images
-|--------------------------------------------------------------------------
-*/
+    |--------------------------------------------------------------------------
+    | Delete uploaded images
+    |--------------------------------------------------------------------------
+    */
 
-public function deleteUploadedImages(
-    int $id
-): void {
+    public function deleteUploadedImages(
+        int $id
+    ): void {
 
-    try {
+        try {
 
-        if ($id <= 0) {
+            if ($id <= 0) {
+
+                errorResponse(
+                    'Invalid uploaded image ID',
+                    400
+                );
+
+                return;
+            }
+
+
+            $userEmail =
+                isset($_GET['user_email'])
+                    ? trim($_GET['user_email'])
+                    : '';
+
+
+            if ($userEmail === '') {
+
+                errorResponse(
+                    'User email is required',
+                    400
+                );
+
+                return;
+            }
+
+
+            /*
+             * Get REAL agency from database.
+             */
+
+            $agencyId =
+                $this->getUserAgencyId(
+                    $userEmail
+                );
+
+
+            /*
+             * Delete only if the image belongs
+             * to this agency.
+             */
+
+            $deleted =
+                $this->service
+                    ->deleteUploadedImages(
+                        $id,
+                        $agencyId
+                    );
+
+
+            if (!$deleted) {
+
+                errorResponse(
+                    'Uploaded image record not found',
+                    404
+                );
+
+                return;
+            }
+
+
+            http_response_code(200);
+
+            header(
+                'Content-Type: application/json'
+            );
+
+            echo json_encode([
+                'success' => true,
+                'message' =>
+                    'Uploaded images deleted successfully'
+            ]);
+
+        } catch (Throwable $e) {
 
             errorResponse(
-                'Invalid uploaded image ID',
-                400
+                $e->getMessage(),
+                500
             );
-
-            return;
         }
-
-
-        $deleted =
-            $this->service->deleteUploadedImages(
-                $id
-            );
-
-
-        if (!$deleted) {
-
-            errorResponse(
-                'Uploaded image record not found',
-                404
-            );
-
-            return;
-        }
-
-
-        http_response_code(200);
-
-        header(
-            'Content-Type: application/json'
-        );
-
-
-        echo json_encode([
-            'success' => true,
-            'message' =>
-                'Uploaded images deleted successfully'
-        ]);
-
-
-    } catch (Throwable $e) {
-
-        errorResponse(
-            $e->getMessage(),
-            500
-        );
     }
-}
 }

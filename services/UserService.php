@@ -552,7 +552,6 @@ public function resetPasswordWithOtp(
     public function searchUsers(string $agencyId,string $search): array { $q='%'.$search.'%'; return $this->listUsers("agency_id = ? AND role = 'USER' AND status = 'ACTIVE' AND (LOWER(full_name) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?))",[$agencyId,$q,$q]); }
     public function deleteUser(int $id): void { if(!$this->findById($id)) throw new RuntimeException('User not found'); $s=$this->pdo->prepare('DELETE FROM users WHERE id=?'); $s->execute([$id]); }
     public function getApprovedUsersByAgency(string $agencyId): array { return $this->getUsersByAdmin($agencyId); }
-    public function getPendingUserCount(): int { return (int)$this->pdo->query("SELECT COUNT(*) FROM users WHERE status='PENDING'")->fetchColumn(); }
     private function listUsers(string $where,array $params): array { $s=$this->pdo->prepare('SELECT * FROM users WHERE '.$where.' ORDER BY id DESC'); $s->execute($params); return array_map(fn($r)=>userRow($r),$s->fetchAll()); }
 public function updateUserStatus(
     int $id,
@@ -619,5 +618,41 @@ public function getUserAgencyId(int $userId): string
     }
 
     return $agencyId;
+}
+public function getPendingUserCount(string $agencyId): int
+{
+    if ($agencyId === '') {
+        return 0;
+    }
+
+    $stmt = $this->pdo->prepare(
+        "SELECT COUNT(*)
+         FROM users
+         WHERE agency_id = ?
+           AND role = 'USER'
+           AND status = 'PENDING'"
+    );
+
+    $stmt->execute([$agencyId]);
+
+    return (int)$stmt->fetchColumn();
+}
+
+public function getUserCount(string $agencyId): int
+{
+    if ($agencyId === '') {
+        return 0;
+    }
+
+    $stmt = $this->pdo->prepare(
+        "SELECT COUNT(*)
+         FROM users
+         WHERE agency_id = ?
+           AND role = 'USER'"
+    );
+
+    $stmt->execute([$agencyId]);
+
+    return (int)$stmt->fetchColumn();
 }
     }

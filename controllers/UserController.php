@@ -17,7 +17,7 @@ class UserController {
  public function search(){jsonResponse($this->s->searchUsers((string)queryParam('agencyId',''),(string)queryParam('search','')));}
  public function delete($id){$this->s->deleteUser((int)$id);jsonResponse('User deleted successfully');}
  public function approved(){jsonResponse($this->s->getApprovedUsersByAgency((string)queryParam('agencyId','')));}
- public function pendingCount(){jsonResponse(['count'=>$this->s->getPendingUserCount()]);}
+ 
 public function updateStatus($id)
 {
     $body = requestBody();
@@ -65,5 +65,22 @@ public function resetPasswordWithOtp()
             (string) queryParam('newPassword', '')
         )
     );
+}
+public function pendingCount()
+{
+    $agencyId = trim((string)queryParam('agencyId', ''));
+
+    jsonResponse([
+        'count' => $this->s->getPendingUserCount($agencyId)
+    ]);
+}
+
+public function userCount()
+{
+    $agencyId = trim((string)queryParam('agencyId', ''));
+
+    jsonResponse([
+        'count' => $this->s->getUserCount($agencyId)
+    ]);
 }
  }
