@@ -172,6 +172,7 @@ class ExcelService
          * Read Excel rows
          */
         $rows = [];
+        $errors = [];
         $total = 0;
 
         for (
@@ -225,32 +226,62 @@ class ExcelService
              * Excel Agency ID = column 16
              * Array index = 15
              */
-            if (
-                strcasecmp(
-                    $agency,
-                    $values[15]
-                ) !== 0
-            ) {
+       /*
+ * Agency validation
+ *
+ * Excel Agency ID:
+ * Column 16
+ * Array index 15
+ */
 
-                return [
-                    'totalRows' => $total,
-                    'inserted' => 0,
-                    'updated' => 0,
-                    'failed' => $total,
-                    'errors' => [
-                        "Upload failed.\n" .
-                        "Row $row: Excel Agency ID '" .
-                        $values[15] .
-                        "' does not match your Agency ID '" .
-                        $agency .
-                        "'."
-                    ]
-                ];
-            }
+$excelAgencyId =
+    trim((string)$values[15]);
+
+$loggedInAgencyId =
+    trim((string)$agency);
+
+if (
+    $excelAgencyId === '' ||
+    strcasecmp(
+        $loggedInAgencyId,
+        $excelAgencyId
+    ) !== 0
+) {
+
+    $errors[] =
+        "Row $row: Excel Agency ID '" .
+        (
+            $excelAgencyId === ''
+                ? '[EMPTY]'
+                : $excelAgencyId
+        ) .
+        "' does not match your Agency ID '" .
+        $loggedInAgencyId .
+        "'.";
+}
+
 
             $rows[] = $values;
         }
+/*
+ * Stop upload if any Agency ID is invalid.
+ *
+ * No database changes have happened yet.
+ */
 
+if (!empty($errors)) {
+
+    return [
+        'success' => false,
+        'totalRows' => $total,
+        'inserted' => 0,
+        'updated' => 0,
+        'failed' => count($errors),
+        'errors' => $errors,
+        'message' =>
+            'Excel contains Agency ID values that do not match your Agency ID.'
+    ];
+}
         /*
          * Database transaction
          */

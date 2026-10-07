@@ -311,7 +311,67 @@ public function get($k)
 
     jsonResponse($r);
 }
- public function upload(){jsonResponse($this->excel->upload($_FILES['file']??[],(string)queryParam('agencyId','')));}
+
+public function upload()
+{
+    $file = $_FILES['file'] ?? [];
+
+    $agencyId = trim(
+        (string) queryParam('agencyId', '')
+    );
+
+    if ($agencyId === '') {
+        errorResponse('Agency ID is required.', 400);
+    }
+
+    if (
+        empty($file['tmp_name']) ||
+        ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+    ) {
+        errorResponse('No Excel file was uploaded.', 400);
+    }
+
+    try {
+        $result = $this->excel->upload(
+            $file,
+            $agencyId
+        );
+
+        // Return all Excel validation errors to the frontend.
+        if (($result['success'] ?? true) === false) {
+            jsonResponse([
+                'success' => false,
+                'message' => $result['message']
+                    ?? 'Excel upload failed.',
+                'totalRows' => $result['totalRows'] ?? 0,
+                'inserted' => $result['inserted'] ?? 0,
+                'updated' => $result['updated'] ?? 0,
+                'failed' => $result['failed'] ?? 0,
+                'errors' => $result['errors'] ?? []
+            ], 400);
+        }
+
+        jsonResponse([
+            'success' => true,
+            'message' => 'Excel uploaded successfully.',
+            'totalRows' => $result['totalRows'] ?? 0,
+            'inserted' => $result['inserted'] ?? 0,
+            'updated' => $result['updated'] ?? 0,
+            'failed' => $result['failed'] ?? 0,
+            'errors' => $result['errors'] ?? []
+        ]);
+
+    } catch (Throwable $e) {
+        error_log('Vehicle Excel upload error: ' . $e->getMessage());
+
+        errorResponse(
+            'Excel upload failed: ' . $e->getMessage(),
+            400
+        );
+    }
+}
+
+
  public function assign($k){$ok=$this->s->assignVehicleToYard($k,(int)queryParam('yardId',0));if(!$ok)errorResponse('Vehicle not found',404);jsonResponse('Vehicle assigned to yard successfully');}
  public function yard($id){jsonResponse($this->s->getVehiclesByYard((int)$id,(string)queryParam('agencyId','')));}
  public function removeYard($k){$ok=$this->s->removeVehicleFromYard($k);if(!$ok)errorResponse('Vehicle not found',404);jsonResponse('Vehicle removed from yard successfully');}
