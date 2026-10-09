@@ -13,8 +13,6 @@ class UserController {
  public function forgot(){jsonResponse($this->s->forgotPassword((string)queryParam('email','')));}
  public function reset(){jsonResponse($this->s->resetPassword((string)queryParam('email',''),(string)queryParam('newPassword','')));}
  public function verify(){jsonResponse(['exists'=>$this->s->verifyEmail((string)queryParam('email',''))]);}
- public function users(){jsonResponse($this->s->getUsersByAdmin((string)queryParam('agencyId','')));}
- public function search(){jsonResponse($this->s->searchUsers((string)queryParam('agencyId',''),(string)queryParam('search','')));}
  public function delete($id){$this->s->deleteUser((int)$id);jsonResponse('User deleted successfully');}
  public function approved(){jsonResponse($this->s->getApprovedUsersByAgency((string)queryParam('agencyId','')));}
  
@@ -82,5 +80,30 @@ public function userCount()
     jsonResponse([
         'count' => $this->s->getUserCount($agencyId)
     ]);
+}
+
+public function users()
+{
+    $agencyId = trim((string) queryParam('agencyId', ''));
+    $status = strtoupper(
+        trim((string) queryParam('status', 'ALL'))
+    );
+
+    jsonResponse(
+        $this->s->getUsersByAdmin($agencyId, $status)
+    );
+}
+
+public function search()
+{
+    $agencyId = trim((string) queryParam('agencyId', ''));
+    $search = trim((string) queryParam('search', ''));
+    $status = strtoupper(
+        trim((string) queryParam('status', 'ALL'))
+    );
+
+    jsonResponse(
+        $this->s->searchUsers($agencyId, $search, $status)
+    );
 }
  }

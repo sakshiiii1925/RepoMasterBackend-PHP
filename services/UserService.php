@@ -548,10 +548,84 @@ public function resetPasswordWithOtp(
     ];
 }
     public function verifyEmail(string $email): bool { return $this->findByEmail($email)!==null; }
-    public function getUsersByAdmin(string $agencyId): array { return $this->listUsers("agency_id = ? AND role = 'USER' AND status = 'ACTIVE'",[$agencyId]); }
-    public function searchUsers(string $agencyId,string $search): array { $q='%'.$search.'%'; return $this->listUsers("agency_id = ? AND role = 'USER' AND status = 'ACTIVE' AND (LOWER(full_name) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?))",[$agencyId,$q,$q]); }
+   
+    
+public function getUsersByAdmin(
+    string $agencyId,
+    string $status = 'ALL'
+): array {
+    $where = "agency_id = ? AND role = 'USER'";
+    $params = [$agencyId];
+
+    $status = strtoupper(trim($status));
+
+    if ($status !== 'ALL') {
+        if (!in_array(
+            $status,
+            ['ACTIVE', 'INACTIVE', 'PENDING', 'REJECTED'],
+            true
+        )) {
+            throw new InvalidArgumentException('Invalid user status');
+        }
+
+        $where .= " AND status = ?";
+        $params[] = $status;
+    }
+
+    return $this->listUsers($where, $params);
+}
+
+public function searchUsers(
+    string $agencyId,
+    string $search,
+    string $status = 'ALL'
+): array {
+    $where = "agency_id = ? AND role = 'USER'";
+    $params = [$agencyId];
+
+    $status = strtoupper(trim($status));
+
+    if ($status !== 'ALL') {
+        if (!in_array(
+            $status,
+            ['ACTIVE', 'INACTIVE', 'PENDING', 'REJECTED'],
+            true
+        )) {
+            throw new InvalidArgumentException('Invalid user status');
+        }
+
+        $where .= " AND status = ?";
+        $params[] = $status;
+    }
+
+    $search = trim($search);
+
+    if ($search !== '') {
+        $where .= " AND (
+            LOWER(full_name) LIKE LOWER(?)
+            OR LOWER(email) LIKE LOWER(?)
+            OR mobile LIKE ?
+        )";
+
+        $term = '%' . $search . '%';
+        $params[] = $term;
+        $params[] = $term;
+        $params[] = $term;
+    }
+
+    return $this->listUsers($where, $params);
+}
+
+public function getApprovedUsersByAgency(
+    string $agencyId
+): array {
+    return $this->listUsers(
+        "agency_id = ? AND role = 'USER' AND status = 'ACTIVE'",
+        [$agencyId]
+    );
+}
     public function deleteUser(int $id): void { if(!$this->findById($id)) throw new RuntimeException('User not found'); $s=$this->pdo->prepare('DELETE FROM users WHERE id=?'); $s->execute([$id]); }
-    public function getApprovedUsersByAgency(string $agencyId): array { return $this->getUsersByAdmin($agencyId); }
+   
     private function listUsers(string $where,array $params): array { $s=$this->pdo->prepare('SELECT * FROM users WHERE '.$where.' ORDER BY id DESC'); $s->execute($params); return array_map(fn($r)=>userRow($r),$s->fetchAll()); }
 public function updateUserStatus(
     int $id,
