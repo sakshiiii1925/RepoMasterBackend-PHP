@@ -15,7 +15,7 @@ class ExcelService
         'Vehicle Number',
         'Chassis Number',
         'Engine Number',
-        'Color',
+        'Vehicle Color',
         'Vehicle Model',
         'Vehicle Make',
         'Vehicle Type',
@@ -43,7 +43,6 @@ class ExcelService
         'Region Manager Name',
         'Region Manager Mobile No',
         'Region Manager Email ID',
-        'Ref Letter',
         'Total Charges',
         'Upload By',
         'Upload Date (YYYY-MM-DD)',
@@ -198,10 +197,10 @@ class ExcelService
                 $rawValue = (string) $cell->getFormattedValue();
 
                 /*
-                 * Column 38 = Upload Date
+                 * Column 37 = Upload Date
                  * Don't remove / - .
                  */
-                if ($col === 38) {
+                if ($col === 37) {
 
                     $values[] = trim($rawValue);
 
@@ -346,22 +345,20 @@ if (!empty($errors)) {
                     'region_manager_mobile_no' => $v[32],
                     'region_manager_email_id' => $v[33],
 
-                    'ref_letter' => $v[34],
-
                     'total_charges' =>
-                        $v[35] === ''
+                        $v[34] === ''
                             ? null
-                            : (float) $v[35],
+                            : (float) $v[34],
 
-                    'upload_by' => $v[36],
+                    'upload_by' => $v[35],
 
                    'upload_date' =>
-    trim($v[37]) === ''
+    trim($v[36]) === ''
         ? date('Y-m-d')
-        : $this->dateValue($v[37]),
+        : $this->dateValue($v[36]),
 
-                    'allocation_dpd' => $v[38],
-                    'repo_status' => $v[39]
+                    'allocation_dpd' => $v[37],
+                    'repo_status' => $v[38]
                 ];
 
                 /*

@@ -510,7 +510,97 @@ public function getVehicleForUser(
         ? vehicleRow($row)
         : null;
 }
-    public function assignVehicleToYard(string $vehicleNumber,int $yardId): bool { $s=$this->pdo->prepare('UPDATE vehicle SET yard_id=? WHERE vehicle_number=?');$s->execute([$yardId,$vehicleNumber]);return $s->rowCount()>0; }
+ 
     public function getVehiclesByYard(int $yardId,string $agencyId): array { $s=$this->pdo->prepare($this->baseSelect().' WHERE v.yard_id=? AND v.agency_id=? ORDER BY v.vehicle_number');$s->execute([$yardId,$agencyId]);return array_map(fn($r)=>vehicleRow($r),$s->fetchAll()); }
-    public function removeVehicleFromYard(string $vehicleNumber): bool { $s=$this->pdo->prepare('UPDATE vehicle SET yard_id=NULL WHERE vehicle_number=?');$s->execute([$vehicleNumber]);return $s->rowCount()>0; }
+   
+
+public function assignVehicleToYard(
+    string $vehicleNumber,
+    int $yardId,
+    string $agencyId
+): bool {
+    // 1. Find the vehicle, whether or not it already has a yard.
+    $vehicle = $this->findVehicleRowByAgency(
+        $vehicleNumber,
+        $agencyId
+    );
+
+    if (!$vehicle || $yardId <= 0) {
+        return false;
+    }
+
+    // 2. Verify that the selected yard belongs to this agency.
+    $yardStmt = $this->pdo->prepare(
+        'SELECT id
+         FROM yard
+         WHERE id = ? AND agency_id = ?
+         LIMIT 1'
+    );
+
+    $yardStmt->execute([$yardId, $agencyId]);
+
+    if (!$yardStmt->fetch()) {
+        return false;
+    }
+
+    // 3. If already assigned to this yard, treat it as success.
+    if ((int) ($vehicle['yard_id'] ?? 0) === $yardId) {
+        return true;
+    }
+
+    // 4. Assign or reassign the vehicle to the selected yard.
+    $stmt = $this->pdo->prepare(
+        'UPDATE vehicle
+         SET yard_id = ?
+         WHERE repo_year = ?
+           AND repo_month = ?
+           AND loan_number = ?
+           AND agency_id = ?'
+    );
+
+    $stmt->execute([
+        $yardId,
+        $vehicle['repo_year'],
+        $vehicle['repo_month'],
+        $vehicle['loan_number'],
+        $agencyId
+    ]);
+
+    return true;
 }
+
+  
+
+public function removeVehicleFromYard(
+    string $vehicleNumber,
+    string $agencyId
+): bool {
+    $vehicle = $this->findVehicleRowByAgency(
+        $vehicleNumber,
+        $agencyId
+    );
+
+    if (!$vehicle) {
+        return false;
+    }
+
+    $stmt = $this->pdo->prepare(
+        'UPDATE vehicle
+         SET yard_id = NULL
+         WHERE repo_year = ?
+           AND repo_month = ?
+           AND loan_number = ?
+           AND agency_id = ?'
+    );
+
+    $stmt->execute([
+        $vehicle['repo_year'],
+        $vehicle['repo_month'],
+        $vehicle['loan_number'],
+        $agencyId
+    ]);
+
+    return true;
+}
+
+    }

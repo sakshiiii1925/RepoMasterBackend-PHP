@@ -375,8 +375,81 @@ public function upload()
     }
 }
 
+public function assign($k)
+{
+    $userId = (int) queryParam('userId', 0);
+    $yardId = (int) queryParam('yardId', 0);
 
- public function assign($k){$ok=$this->s->assignVehicleToYard($k,(int)queryParam('yardId',0));if(!$ok)errorResponse('Vehicle not found',404);jsonResponse('Vehicle assigned to yard successfully');}
+    if ($userId <= 0) {
+        errorResponse('userId is required', 400);
+        return;
+    }
+
+    if ($yardId <= 0) {
+        errorResponse('yardId is required', 400);
+        return;
+    }
+
+    $agencyId = $this->userService->getUserAgencyId($userId);
+
+    if (!$agencyId) {
+        errorResponse('Agency not found for user', 404);
+        return;
+    }
+
+    $ok = $this->s->assignVehicleToYard(
+        $k,
+        $yardId,
+        (string) $agencyId
+    );
+
+    if (!$ok) {
+        errorResponse(
+            'Vehicle or yard not found for this agency',
+            404
+        );
+        return;
+    }
+
+    jsonResponse([
+        'success' => true,
+        'message' => 'Vehicle assigned to yard successfully'
+    ]);
+}
+
+public function removeYard($k)
+{
+    $userId = (int) queryParam('userId', 0);
+
+    if ($userId <= 0) {
+        errorResponse('userId is required', 400);
+        return;
+    }
+
+    $agencyId = $this->userService->getUserAgencyId($userId);
+
+    if (!$agencyId) {
+        errorResponse('Agency not found for user', 404);
+        return;
+    }
+
+    $ok = $this->s->removeVehicleFromYard(
+        $k,
+        (string) $agencyId
+    );
+
+    if (!$ok) {
+        errorResponse('Vehicle not found for this agency', 404);
+        return;
+    }
+
+    jsonResponse([
+        'success' => true,
+        'message' => 'Vehicle removed from yard successfully'
+    ]);
+}
+
+
  public function yard($id){jsonResponse($this->s->getVehiclesByYard((int)$id,(string)queryParam('agencyId','')));}
- public function removeYard($k){$ok=$this->s->removeVehicleFromYard($k);if(!$ok)errorResponse('Vehicle not found',404);jsonResponse('Vehicle removed from yard successfully');}
+ 
 }

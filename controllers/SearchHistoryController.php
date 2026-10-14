@@ -132,52 +132,58 @@ class SearchHistoryController
                 'Search history deleted successfully'
         ]);
     }
-    public function deleteMultiple()
+   public function deleteMultiple()
 {
-    $userId = (int) queryParam('userId', 0);
+    // Read the JSON request body.
+    $body = requestBody();
+
+    // Support userId from JSON body or query parameters.
+    $userId = (int) (
+        $body['userId']
+        ?? queryParam('userId', 0)
+    );
 
     if ($userId <= 0) {
-        errorResponse(
-            'userId is required',
-            400
-        );
+        errorResponse('userId is required', 400);
         return;
     }
 
-    $body = requestBody();
-
+    // Get selected history record IDs.
     $ids = $body['ids'] ?? [];
 
     if (!is_array($ids) || empty($ids)) {
-        errorResponse(
-            'No search history IDs received',
-            400
-        );
+        errorResponse('No search history IDs received', 400);
         return;
     }
 
-    $agencyId =
-        $this->userService
-            ->getUserAgencyId($userId);
+    // Validate IDs before deleting anything.
+    $ids = array_values(array_unique(array_filter(
+        array_map('intval', $ids),
+        fn($id) => $id > 0
+    )));
+
+    if (empty($ids)) {
+        errorResponse('No valid search history IDs received', 400);
+        return;
+    }
+
+    // Find the user's agency.
+    $agencyId = $this->userService->getUserAgencyId($userId);
 
     if (!$agencyId) {
-        errorResponse(
-            'Agency not found for user',
-            404
-        );
+        errorResponse('Agency not found for user', 404);
         return;
     }
 
-    $deleted =
-        $this->s->deleteMultiple(
-            $ids,
-            $agencyId
-        );
+    // Delete only records belonging to that agency.
+    $deleted = $this->s->deleteMultiple(
+        $ids,
+        (string) $agencyId
+    );
 
     jsonResponse([
         'success' => true,
-        'message' =>
-            $deleted .
+        'message' => $deleted .
             ' search history record(s) deleted successfully',
         'deletedCount' => $deleted
     ]);
