@@ -688,7 +688,7 @@ public function searchVehiclesForInvoice(string $keyword): array
             LOWER(TRIM(v.vehicle_number)) LIKE LOWER(?)
 
             AND LOWER(TRIM(v.repo_status)) IN (
-                'repo mark',
+                'Repo init and Parked',
                 'parked',
                 'parked in godown'
             )

@@ -16,12 +16,28 @@ class VehicleService
         return "SELECT v.*, y.yard_name, y.yard_address, y.yard_manager_name, y.yard_contact_no, y.agency_id AS yard_agency_id FROM vehicle v LEFT JOIN yard y ON y.id=v.yard_id";
     }
 
-    private function findVehicleRow(string $keyword): ?array
-    {
-        $normalized = strtoupper(str_replace(['-','/','.',' '], '', $keyword));
-        $sql = $this->baseSelect()." WHERE UPPER(REPLACE(REPLACE(REPLACE(REPLACE(v.vehicle_number,'-',''),'/',''),'.',''),' ',''))=? OR UPPER(v.loan_number)=UPPER(?) LIMIT 1";
-        $s=$this->pdo->prepare($sql); $s->execute([$normalized,$keyword]); return $s->fetch() ?: null;
-    }
+   private function findVehicleRow(string $keyword): ?array
+{
+    $normalized = strtoupper(
+        str_replace(['-', '/', '.', ' '], '', trim($keyword))
+    );
+
+    $sql = $this->baseSelect() . "
+        WHERE
+            UPPER(REPLACE(REPLACE(REPLACE(REPLACE(
+                v.vehicle_number, '-', ''), '/', ''), '.', ''), ' ', '')) = ?
+            OR
+            UPPER(REPLACE(REPLACE(REPLACE(REPLACE(
+                v.chassis_number, '-', ''), '/', ''), '.', ''), ' ', '')) = ?
+            OR UPPER(v.loan_number) = UPPER(?)
+        LIMIT 1
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+    $stmt->execute([$normalized, $normalized, trim($keyword)]);
+
+    return $stmt->fetch() ?: null;
+}
 
     public function getVehicle(string $keyword): ?array { $r=$this->findVehicleRow($keyword); return $r ? vehicleRow($r) : null; }
  
@@ -70,16 +86,16 @@ public function updateStatus(
     ]);
 
     // =====================================================
-    // 3. REPO MARK
+    // 3. Repo init and Parked
     // =====================================================
 
-    if (strcasecmp($status, 'repo mark') === 0) {
+    if (strcasecmp($status, 'Repo init and Parked') === 0) {
 
         $sql = "
             UPDATE vehicle
             SET
-                repo_marked_by = ?,
-                repo_marked_at = NOW()
+                Repo_init_and_Parked_by = ?,
+                Repo_init_and_Parked_at = NOW()
             WHERE repo_year = ?
               AND repo_month = ?
               AND loan_number = ?
@@ -155,7 +171,7 @@ public function updateStatus(
     // =====================================================
 
     if (
-        strcasecmp($status, 'repo mark') === 0 ||
+        strcasecmp($status, 'Repo init and Parked') === 0 ||
         strcasecmp($status, 'Parked') === 0 ||
         strcasecmp($status, 'Parked in Godown') === 0 ||
         strcasecmp($status, 'Released') === 0
@@ -388,114 +404,80 @@ public function deleteVehiclesByUploadDate(
     return $stmt->rowCount();
 }
 
-
-    public function searchVehicleNumbers(
+public function searchVehicleNumbers(
     string $keyword,
     string $agencyId
 ): array {
-
-    $n = strtoupper(
-        str_replace(
-            ['-', '/', '.', ' '],
-            '',
-            $keyword
-        )
+    $normalized = strtoupper(
+        str_replace(['-', '/', '.', ' '], '', trim($keyword))
     );
 
     $sql = $this->baseSelect() . "
         WHERE v.agency_id = ?
         AND (
-            UPPER(
-                REPLACE(
-                    REPLACE(
-                        REPLACE(
-                            REPLACE(
-                                v.vehicle_number,
-                                '-', ''
-                            ),
-                            '/',
-                            ''
-                        ),
-                        '.',
-                        ''
-                    ),
-                    ' ',
-                    ''
-                )
-            ) LIKE CONCAT('%', ?, '%')
+            UPPER(REPLACE(REPLACE(REPLACE(REPLACE(
+                v.vehicle_number, '-', ''), '/', ''), '.', ''), ' ', ''))
+                LIKE CONCAT('%', ?, '%')
+
+            OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(
+                v.chassis_number, '-', ''), '/', ''), '.', ''), ' ', ''))
+                LIKE CONCAT('%', ?, '%')
 
             OR UPPER(v.loan_number)
                 LIKE CONCAT('%', UPPER(?), '%')
         )
-
         ORDER BY v.vehicle_number
         LIMIT 50
     ";
 
     $stmt = $this->pdo->prepare($sql);
-
     $stmt->execute([
         $agencyId,
-        $n,
-        $keyword
+        $normalized,
+        $normalized,
+        trim($keyword)
     ]);
 
     return array_map(
-        fn($r) => vehicleRow($r),
+        fn($row) => vehicleRow($row),
         $stmt->fetchAll()
     );
 }
+        
 private function findVehicleRowByAgency(
     string $keyword,
     string $agencyId
 ): ?array {
-
     $normalized = strtoupper(
-        str_replace(
-            ['-', '/', '.', ' '],
-            '',
-            $keyword
-        )
+        str_replace(['-', '/', '.', ' '], '', trim($keyword))
     );
 
     $sql = $this->baseSelect() . "
         WHERE v.agency_id = ?
         AND (
-            UPPER(
-                REPLACE(
-                    REPLACE(
-                        REPLACE(
-                            REPLACE(
-                                v.vehicle_number,
-                                '-', ''
-                            ),
-                            '/',
-                            ''
-                        ),
-                        '.',
-                        ''
-                    ),
-                    ' ',
-                    ''
-                )
-            ) = ?
-
+            UPPER(REPLACE(REPLACE(REPLACE(REPLACE(
+                v.vehicle_number, '-', ''), '/', ''), '.', ''), ' ', '')) = ?
+            OR
+            UPPER(REPLACE(REPLACE(REPLACE(REPLACE(
+                v.chassis_number, '-', ''), '/', ''), '.', ''), ' ', '')) = ?
             OR UPPER(v.loan_number) = UPPER(?)
         )
-
         LIMIT 1
     ";
 
     $stmt = $this->pdo->prepare($sql);
-
     $stmt->execute([
         $agencyId,
         $normalized,
-        $keyword
+        $normalized,
+        trim($keyword)
     ]);
 
     return $stmt->fetch() ?: null;
 }
+
+    
+      
 public function getVehicleForUser(
     string $keyword,
     string $agencyId

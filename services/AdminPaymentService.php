@@ -47,7 +47,7 @@ class AdminPaymentService
     /*
      * work_type can be:
      *
-     * Repo Mark
+     * Repo init and Parked
      * Parked
      *
      * We accept both work_type and repo_status
@@ -100,12 +100,12 @@ class AdminPaymentService
     // ==========================================
 
     if (
-        strcasecmp($workType, 'repo mark') === 0 ||
+        strcasecmp($workType, 'Repo init and Parked') === 0 ||
         strcasecmp($workType, 'repo_mark') === 0 ||
         strcasecmp($workType, 'repomark') === 0
     ) {
 
-        $workType = 'Repo Mark';
+        $workType = 'Repo init and Parked';
 
     } elseif (
         strcasecmp($workType, 'parked') === 0 ||
@@ -118,7 +118,7 @@ class AdminPaymentService
     } else {
 
         throw new InvalidArgumentException(
-            'Invalid work_type. Use Repo Mark or Parked'
+            'Invalid work_type. Use Repo init and Parked or Parked'
         );
     }
 
@@ -136,7 +136,7 @@ class AdminPaymentService
             vehicle_type,
             repo_status,
             agency_id,
-            repo_marked_by,
+            Repo_init_and_Parked_by,
             parked_by
         FROM vehicle
         WHERE repo_year = ?
@@ -166,14 +166,14 @@ class AdminPaymentService
     // VERIFY USER COMPLETED SELECTED WORK
     // ==========================================
 
-    if ($workType === 'Repo Mark') {
+    if ($workType === 'Repo init and Parked') {
 
         if (
-            (int)($vehicle['repo_marked_by'] ?? 0)
+            (int)($vehicle['Repo_init_and_Parked_by'] ?? 0)
             !== $userId
         ) {
             throw new RuntimeException(
-                'Selected user did not complete Repo Mark for this vehicle'
+                'Selected user did not complete Repo init and Parked for this vehicle'
             );
         }
 
@@ -256,7 +256,7 @@ class AdminPaymentService
     // SELECT RATE
     // ==========================================
 
-    if ($workType === 'Repo Mark') {
+    if ($workType === 'Repo init and Parked') {
 
         $amount = (float)$rate['repo_mark_rate'];
 
@@ -522,11 +522,11 @@ public function getUserPaymentSummary(int $userId): array
             v.vehicle_number,
             v.vehicle_type,
             v.agency_id,
-            v.repo_marked_by,
+            v.Repo_init_and_Parked_by,
             v.parked_by
         FROM vehicle v
         WHERE
-            v.repo_marked_by = ?
+            v.Repo_init_and_Parked_by = ?
             OR
             v.parked_by = ?
         ORDER BY v.vehicle_number ASC
@@ -592,9 +592,9 @@ public function getUserPaymentSummary(int $userId): array
         }
 
 
-        // Repo Mark completed by this user
+        // Repo init and Parked completed by this user
         if (
-            (int)$vehicle['repo_marked_by'] === $userId
+            (int)$vehicle['Repo_init_and_Parked_by'] === $userId
         ) {
 
             $totalDue +=
@@ -861,7 +861,7 @@ public function getUserPaymentSummary(int $userId): array
  * Admin selects:
  * - User
  * - Vehicle
- * - Work Type (Repo Mark / Parked)
+ * - Work Type (Repo init and Parked / Parked)
  *
  * Backend:
  * - verifies user completed that exact work
@@ -891,13 +891,13 @@ public function calculateVehiclePayment(
     // ==========================================
 
     if (
-        strcasecmp($workType, 'repo mark') === 0 ||
+        strcasecmp($workType, 'Repo init and Parked') === 0 ||
         strcasecmp($workType, 'repo_mark') === 0 ||
-        strcasecmp($workType, 'repo marked') === 0 ||
+        strcasecmp($workType, 'Repo init and Parkeded') === 0 ||
         strcasecmp($workType, 'repo_marked') === 0
     ) {
 
-        $workType = 'Repo Mark';
+        $workType = 'Repo init and Parked';
 
     } elseif (
         strcasecmp($workType, 'parked') === 0 ||
@@ -910,7 +910,7 @@ public function calculateVehiclePayment(
     } else {
 
         throw new InvalidArgumentException(
-            'Invalid work_type. Use Repo Mark or Parked'
+            'Invalid work_type. Use Repo init and Parked or Parked'
         );
     }
 
@@ -927,8 +927,8 @@ public function calculateVehiclePayment(
             vehicle_type,
             repo_status,
             agency_id,
-            repo_marked_by,
-            repo_marked_at,
+            Repo_init_and_Parked_by,
+            Repo_init_and_Parked_at,
             parked_by,
             parked_at
         FROM vehicle
@@ -956,19 +956,19 @@ public function calculateVehiclePayment(
     // VERIFY SELECTED USER COMPLETED WORK
     // ==========================================
 
-    if ($workType === 'Repo Mark') {
+    if ($workType === 'Repo init and Parked') {
 
         if (
-            (int)($vehicle['repo_marked_by'] ?? 0)
+            (int)($vehicle['Repo_init_and_Parked_by'] ?? 0)
             !== $userId
         ) {
             throw new RuntimeException(
-                'Selected user did not complete Repo Mark for this vehicle'
+                'Selected user did not complete Repo init and Parked for this vehicle'
             );
         }
 
         $completedAt =
-            $vehicle['repo_marked_at'] ?? null;
+            $vehicle['Repo_init_and_Parked_at'] ?? null;
 
     } else {
 
@@ -1048,7 +1048,7 @@ public function calculateVehiclePayment(
     // TOTAL AMOUNT FOR THIS WORK
     // ==========================================
 
-    if ($workType === 'Repo Mark') {
+    if ($workType === 'Repo init and Parked') {
 
         $totalAmount =
             (float)$rate['repo_mark_rate'];
@@ -1277,7 +1277,7 @@ public function getMyPaymentSummary(int $userId): array
 {
     /*
      * Calculate total amount that this user should receive
-     * from completed Repo Mark and Parked work.
+     * from completed Repo init and Parked and Parked work.
      */
 
     $workSql = "
@@ -1288,9 +1288,9 @@ public function getMyPaymentSummary(int $userId): array
             v.vehicle_number,
             v.vehicle_type,
             v.agency_id,
-            'Repo Mark' AS work_type
+            'Repo init and Parked' AS work_type
         FROM vehicle v
-        WHERE v.repo_marked_by = ?
+        WHERE v.Repo_init_and_Parked_by = ?
 
         UNION ALL
 
@@ -1319,7 +1319,7 @@ public function getMyPaymentSummary(int $userId): array
     foreach ($works as $work) {
 
         $rateColumn =
-            $work['work_type'] === 'Repo Mark'
+            $work['work_type'] === 'Repo init and Parked'
                 ? 'repo_mark_rate'
                 : 'parked_rate';
 
@@ -1502,14 +1502,14 @@ public function getUserVehicles(
             v.vehicle_number,
             v.vehicle_type,
             v.agency_id,
-            v.repo_marked_by,
-            v.repo_marked_at,
+            v.Repo_init_and_Parked_by,
+            v.Repo_init_and_Parked_at,
             v.parked_by,
             v.parked_at
         FROM vehicle v
         WHERE v.agency_id = ?
           AND (
-                v.repo_marked_by = ?
+                v.Repo_init_and_Parked_by = ?
                 OR
                 v.parked_by = ?
               )
@@ -1573,11 +1573,11 @@ public function getUserVehicles(
 
 
         // =================================================
-        // CHECK REPO MARK WORK
+        // CHECK Repo init and Parked WORK
         // =================================================
 
         if (
-            (int)($vehicle['repo_marked_by'] ?? 0)
+            (int)($vehicle['Repo_init_and_Parked_by'] ?? 0)
             === $userId
         ) {
 
@@ -1595,7 +1595,7 @@ public function getUserVehicles(
                       AND repo_month = ?
                       AND loan_number = ?
                       AND LOWER(TRIM(repo_status)) =
-                          'repo mark'
+                          'Repo init and Parked'
                 ");
 
                 $paidStmt->execute([
@@ -1637,11 +1637,11 @@ public function getUserVehicles(
                         'agency_id' =>
                             $vehicleAgencyId,
 
-                        'repo_marked_by' =>
-                            $vehicle['repo_marked_by'],
+                        'Repo_init_and_Parked_by' =>
+                            $vehicle['Repo_init_and_Parked_by'],
 
-                        'repo_marked_at' =>
-                            $vehicle['repo_marked_at'],
+                        'Repo_init_and_Parked_at' =>
+                            $vehicle['Repo_init_and_Parked_at'],
 
                         'parked_by' =>
                             $vehicle['parked_by'],
@@ -1650,10 +1650,10 @@ public function getUserVehicles(
                             $vehicle['parked_at'],
 
                         'work_type' =>
-                            'Repo Mark',
+                            'Repo init and Parked',
 
                         'completed_at' =>
-                            $vehicle['repo_marked_at'],
+                            $vehicle['Repo_init_and_Parked_at'],
 
                         'total_amount' =>
                             number_format(
@@ -1750,11 +1750,11 @@ public function getUserVehicles(
                         'agency_id' =>
                             $vehicleAgencyId,
 
-                        'repo_marked_by' =>
-                            $vehicle['repo_marked_by'],
+                        'Repo_init_and_Parked_by' =>
+                            $vehicle['Repo_init_and_Parked_by'],
 
-                        'repo_marked_at' =>
-                            $vehicle['repo_marked_at'],
+                        'Repo_init_and_Parked_at' =>
+                            $vehicle['Repo_init_and_Parked_at'],
 
                         'parked_by' =>
                             $vehicle['parked_by'],

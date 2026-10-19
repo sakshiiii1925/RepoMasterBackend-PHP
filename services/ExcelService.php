@@ -196,18 +196,29 @@ class ExcelService
 
                 $rawValue = (string) $cell->getFormattedValue();
 
-                /*
-                 * Column 37 = Upload Date
-                 * Don't remove / - .
-                 */
-                if ($col === 37) {
+                
+/*
+ * Column 16 = Agency ID
+ * Column 37 = Upload Date
+ *
+ * Keep Agency ID hyphens unchanged.
+ * Keep Upload Date formatting unchanged.
+ * Clean all remaining columns as before.
+ */
 
-                    $values[] = trim($rawValue);
+if ($col === 16) {
 
-                } else {
+    $values[] = strtoupper(trim($rawValue));
 
-                    $values[] = $this->clean($rawValue);
-                }
+} elseif ($col === 37) {
+
+    $values[] = trim($rawValue);
+
+} else {
+
+    $values[] = $this->clean($rawValue);
+}
+
             }
 
             /*

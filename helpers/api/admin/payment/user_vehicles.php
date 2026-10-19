@@ -26,8 +26,8 @@ try {
     /*
      * Get vehicles completed by this user.
      *
-     * Repo Marked:
-     * repo_status = Repo Mark
+     * Repo init and Parkeded:
+     * repo_status = Repo init and Parked
      *
      * Parked:
      * repo_status = Parked in Godown
@@ -43,7 +43,7 @@ try {
         FROM vehicle
         WHERE
             (
-                repo_status = 'repo mark'
+                repo_status = 'Repo init and Parked'
                 OR
                 repo_status = 'Parked'
             )

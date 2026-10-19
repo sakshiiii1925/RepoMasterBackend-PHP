@@ -42,11 +42,11 @@ class RepoImageService
         */
 
         if (
-            strcasecmp($status, 'repo mark') !== 0 &&
+            strcasecmp($status, 'Repo init and Parked') !== 0 &&
             strcasecmp($status, 'Parked') !== 0
         ) {
             throw new Exception(
-                'Images can only be uploaded for Repo Mark or Parked status.'
+                'Images can only be uploaded for Repo init and Parked or Parked status.'
             );
         }
 
@@ -419,7 +419,7 @@ class RepoImageService
         if (
             strcasecmp(
                 $status,
-                'repo mark'
+                'Repo init and Parked'
             ) === 0
         ) {
 
@@ -427,8 +427,8 @@ class RepoImageService
                 UPDATE vehicle
                 SET
                     repo_status = ?,
-                    repo_marked_by = ?,
-                    repo_marked_at = NOW()
+                    Repo_init_and_Parked_by = ?,
+                    Repo_init_and_Parked_at = NOW()
                 WHERE repo_year = ?
                   AND repo_month = ?
                   AND loan_number = ?
