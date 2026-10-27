@@ -250,12 +250,13 @@ public function updateStatus(
 // DELETE MULTIPLE VEHICLES
 // =========================================================
 
+
 public function deleteMultipleVehicles(
-    array $vehicleNumbers,
+    array $records,
     string $agencyId
 ): int {
 
-    if (empty($vehicleNumbers)) {
+    if (empty($records)) {
         return 0;
     }
 
@@ -265,83 +266,57 @@ public function deleteMultipleVehicles(
 
     try {
 
-        foreach ($vehicleNumbers as $vehicleNumber) {
+        $delete = $this->pdo->prepare("
+            DELETE FROM vehicle
+            WHERE repo_year = ?
+              AND repo_month = ?
+              AND loan_number = ?
+              AND agency_id = ?
+        ");
 
-            $vehicleNumber =
-                trim((string)$vehicleNumber);
+        foreach ($records as $record) {
 
-            if ($vehicleNumber === '') {
+            if (!is_array($record)) {
                 continue;
             }
 
-            // Find vehicle ONLY inside this agency
-            $sql = $this->baseSelect() . "
-                WHERE v.agency_id = ?
-                AND UPPER(
-                    REPLACE(
-                        REPLACE(
-                            REPLACE(
-                                REPLACE(
-                                    v.vehicle_number,
-                                    '-',
-                                    ''
-                                ),
-                                '/',
-                                ''
-                            ),
-                            '.',
-                            ''
-                        ),
-                        ' ',
-                        ''
-                    )
-                ) = UPPER(?)
-                LIMIT 1
-            ";
+            // Accept camelCase from Android or snake_case.
+            $year = trim((string)(
+                $record['repoYear']
+                ?? $record['repo_year']
+                ?? ''
+            ));
 
-            $stmt =
-                $this->pdo->prepare($sql);
+            $month = trim((string)(
+                $record['repoMonth']
+                ?? $record['repo_month']
+                ?? ''
+            ));
 
-            $normalized =
-                strtoupper(
-                    str_replace(
-                        ['-', '/', '.', ' '],
-                        '',
-                        $vehicleNumber
-                    )
-                );
+            $loan = trim((string)(
+                $record['loanNumber']
+                ?? $record['loan_number']
+                ?? ''
+            ));
 
-            $stmt->execute([
-                $agencyId,
-                $normalized
-            ]);
-
-            $vehicle =
-                $stmt->fetch();
-
-            if (!$vehicle) {
+            // The composite primary key is required.
+            if (
+                $year === '' ||
+                $month === '' ||
+                $loan === ''
+            ) {
                 continue;
             }
 
-            // Composite primary key
-            $delete =
-                $this->pdo->prepare("
-                    DELETE FROM vehicle
-                    WHERE repo_year = ?
-                    AND repo_month = ?
-                    AND loan_number = ?
-                    AND agency_id = ?
-                ");
-
+            // Restrict deletion to the user's agency.
             $delete->execute([
-                $vehicle['repo_year'],
-                $vehicle['repo_month'],
-                $vehicle['loan_number'],
+                $year,
+                $month,
+                $loan,
                 $agencyId
             ]);
 
             if ($delete->rowCount() > 0) {
-
                 $deletedCount++;
             }
         }
@@ -352,13 +327,15 @@ public function deleteMultipleVehicles(
 
     } catch (Throwable $e) {
 
-        $this->pdo->rollBack();
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->rollBack();
+        }
 
         throw $e;
     }
 }
 
-
+ 
 // =========================================================
 // DELETE ALL VEHICLES BY UPLOAD DATE
 // =========================================================
@@ -477,6 +454,34 @@ private function findVehicleRowByAgency(
 }
 
     
+public function getVehicleByKey(
+    string $repoYear,
+    string $repoMonth,
+    string $loanNumber,
+    string $agencyId
+): ?array {
+
+    $sql = $this->baseSelect() . "
+        WHERE v.repo_year = ?
+          AND v.repo_month = ?
+          AND v.loan_number = ?
+          AND v.agency_id = ?
+        LIMIT 1
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+    $stmt->execute([
+        $repoYear,
+        $repoMonth,
+        $loanNumber,
+        $agencyId
+    ]);
+
+    $row = $stmt->fetch();
+
+    return $row ? vehicleRow($row) : null;
+}
+
       
 public function getVehicleForUser(
     string $keyword,

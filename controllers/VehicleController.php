@@ -113,71 +113,56 @@ public function count()
 // DELETE MULTIPLE VEHICLES
 // =========================================================
 
+
 public function bulkDelete()
 {
-    $userId =
-        (int)queryParam(
-            'userId',
-            0
-        );
+    $userId = (int) queryParam('userId', 0);
 
     if ($userId <= 0) {
-
-        errorResponse(
-            'userId is required',
-            400
-        );
-
+        errorResponse('userId is required', 400);
         return;
     }
 
-    $agencyId =
-        $this->userService
-            ->getUserAgencyId($userId);
+    $agencyId = $this->userService
+        ->getUserAgencyId($userId);
 
     if (!$agencyId) {
-
-        errorResponse(
-            'Agency not found for user',
-            404
-        );
-
+        errorResponse('Agency not found for user', 404);
         return;
     }
 
-    $body =
-        requestBody();
+    $body = requestBody();
 
-    $vehicleNumbers =
-        $body['vehicleNumbers'] ?? [];
+    // Android must send:
+    // { "records": [
+    //   {
+    //     "repoYear": "2026",
+    //     "repoMonth": "8",
+    //     "loanNumber": "LN001"
+    //   }
+    // ]}
+    $records = $body['records'] ?? [];
 
-    if (
-        !is_array($vehicleNumbers) ||
-        empty($vehicleNumbers)
-    ) {
-
-        errorResponse(
-            'vehicleNumbers are required',
-            400
-        );
-
+    if (!is_array($records) || empty($records)) {
+        errorResponse('Selected records are required', 400);
         return;
     }
 
-    $deletedCount =
-        $this->s->deleteMultipleVehicles(
-            $vehicleNumbers,
-            $agencyId
-        );
+    $deletedCount = $this->s->deleteMultipleVehicles(
+        $records,
+        (string) $agencyId
+    );
 
     jsonResponse([
         'success' => true,
         'deletedCount' => $deletedCount,
-        'message' =>
-            $deletedCount .
-            ' vehicle(s) deleted successfully'
+        'message' => $deletedCount .
+            ' selected record(s) deleted successfully'
     ]);
 }
+
+
+
 
 
 // =========================================================
@@ -311,7 +296,49 @@ public function get($k)
 
     jsonResponse($r);
 }
+public function getByKey()
+{
+    $userId = (int) queryParam('userId', 0);
 
+    $repoYear = trim((string) queryParam('repoYear', ''));
+    $repoMonth = trim((string) queryParam('repoMonth', ''));
+    $loanNumber = trim((string) queryParam('loanNumber', ''));
+
+    if ($userId <= 0) {
+        errorResponse('userId is required', 400);
+        return;
+    }
+
+    if ($repoYear === '' || $repoMonth === '' || $loanNumber === '') {
+        errorResponse(
+            'Repo Year, Repo Month and Loan Number are required',
+            400
+        );
+        return;
+    }
+
+    $agencyId = $this->userService->getUserAgencyId($userId);
+
+    if (!$agencyId) {
+        errorResponse('Agency not found for user', 404);
+        return;
+    }
+
+    // This service method must be added to VehicleService.php.
+    $vehicle = $this->s->getVehicleByKey(
+        $repoYear,
+        $repoMonth,
+        $loanNumber,
+        (string) $agencyId
+    );
+
+    if (!$vehicle) {
+        errorResponse('Vehicle record not found for this agency', 404);
+        return;
+    }
+
+    jsonResponse($vehicle);
+}
 public function upload()
 {
      

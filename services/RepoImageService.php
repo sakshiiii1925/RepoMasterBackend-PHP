@@ -107,48 +107,58 @@ class RepoImageService
         |--------------------------------------------------------------------------
         */
 
+       
+        /*
+        |--------------------------------------------------------------------------
+        | 3. Find vehicle by vehicle number OR loan number
+        |--------------------------------------------------------------------------
+        */
+
         $vehicleStmt = $this->pdo->prepare("
             SELECT *
             FROM vehicle
-            WHERE UPPER(
-                REPLACE(
-                    REPLACE(
+            WHERE agency_id = ?
+              AND (
+                    UPPER(
                         REPLACE(
                             REPLACE(
-                                vehicle_number,
-                                '-',
-                                ''
+                                REPLACE(
+                                    REPLACE(
+                                        COALESCE(vehicle_number, ''),
+                                        '-', ''
+                                    ),
+                                    '/', ''
+                                ),
+                                '.', ''
                             ),
-                            '/',
-                            ''
-                        ),
-                        '.',
-                        ''
-                    ),
-                    ' ',
-                    ''
-                )
-            ) = ?
+                            ' ', ''
+                        )
+                    ) = ?
+                    OR UPPER(TRIM(COALESCE(loan_number, ''))) = ?
+              )
             LIMIT 1
         ");
 
         $vehicleStmt->execute([
-            $vehicleNumber
+            $userAgencyId,
+            $vehicleNumber,
+            trim($vehicleNumber)
         ]);
 
-        $vehicle = $vehicleStmt->fetch(
-            PDO::FETCH_ASSOC
-        );
+        $vehicle = $vehicleStmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$vehicle) {
             throw new Exception(
-                'Vehicle not found.'
+                'Vehicle not found in your agency using vehicle number or loan number.'
             );
         }
 
         $vehicleAgencyId = trim(
             (string)($vehicle['agency_id'] ?? '')
         );
+
+                 
+
 
         /*
         |--------------------------------------------------------------------------
@@ -206,12 +216,19 @@ class RepoImageService
         |--------------------------------------------------------------------------
         */
 
-        $safeVehicleNumber = preg_replace(
-            '/[^A-Z0-9_-]/',
-            '',
-            $vehicleNumber
-        );
+       $actualVehicleNumber = trim(
+    (string)($vehicle['vehicle_number'] ?? '')
+);
 
+$folderIdentifier = $actualVehicleNumber !== ''
+    ? $actualVehicleNumber
+    : trim((string)$vehicle['loan_number']);
+
+$safeVehicleNumber = preg_replace(
+    '/[^A-Z0-9_-]/',
+    '',
+    strtoupper($folderIdentifier)
+);
         $uploadDirectory =
             __DIR__ .
             '/../uploads/vehicles/' .
@@ -371,7 +388,9 @@ class RepoImageService
 
         $imageStmt->execute([
             ':vehicle_number' =>
-                $vehicleNumber,
+    $actualVehicleNumber !== ''
+        ? $actualVehicleNumber
+        : trim((string)$vehicle['loan_number']),
 
             ':user_id' =>
                 $userId,

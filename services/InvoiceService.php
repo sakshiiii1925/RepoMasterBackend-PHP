@@ -666,6 +666,7 @@ public function list(string $agencyId): array
     // Return updated invoice
     return $this->get($id);
 }
+
 public function searchVehiclesForInvoice(string $keyword): array
 {
     $keyword = trim($keyword);
@@ -674,273 +675,84 @@ public function searchVehiclesForInvoice(string $keyword): array
         return [];
     }
 
+    // Remove spaces, hyphens, slashes and dots for vehicle number matching.
+    $normalized = preg_replace('/[-\/.\s]/', '', $keyword);
+
     $sql = "
         SELECT
             v.*,
             y.yard_name,
             y.yard_address
         FROM vehicle v
-
         LEFT JOIN yard y
             ON y.id = v.yard_id
-
         WHERE
-            LOWER(TRIM(v.vehicle_number)) LIKE LOWER(?)
-
+            (
+                REPLACE(REPLACE(REPLACE(REPLACE(
+                    UPPER(TRIM(v.vehicle_number)),
+                    '-', ''), '/', ''), '.', ''), ' ', '')
+                LIKE UPPER(?)
+                OR TRIM(v.loan_number) LIKE ?
+            )
             AND LOWER(TRIM(v.repo_status)) IN (
-                'Repo init and Parked',
+                'repo init and parked',
                 'parked',
                 'parked in godown'
             )
-
         ORDER BY v.vehicle_number ASC
-
         LIMIT 20
     ";
 
     $stmt = $this->pdo->prepare($sql);
 
     $stmt->execute([
+        '%' . $normalized . '%',
         '%' . $keyword . '%'
     ]);
 
     $vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    return array_map(
-        function ($v) {
+    return array_map(function ($v) {
+        return [
+            'id' => [
+                'repoYear' => $v['repo_year'] ?? null,
+                'repoMonth' => $v['repo_month'] ?? null,
+                'loanNumber' => $v['loan_number'] ?? null
+            ],
 
-            return [
+            'vehicleNumber' => $v['vehicle_number'] ?? null,
+            'loanNumber' => $v['loan_number'] ?? null,
 
-                /*
-                 * IMPORTANT:
-                 * Vehicle.kt expects VehicleId object
-                 */
-                'id' => [
-                    'repoYear' =>
-                        $v['repo_year'] ?? null,
+            'ownerName' =>
+                $v['owner_name'] ?? $v['customer_name'] ?? null,
 
-                    'repoMonth' =>
-                        $v['repo_month'] ?? null,
+            'customerAddress' =>
+                $v['customer_address'] ?? $v['address'] ?? null,
 
-                    'loanNumber' =>
-                        $v['loan_number'] ?? null
-                ],
+            'vehicleType' => $v['vehicle_type'] ?? null,
+            'vehicleMake' => $v['vehicle_make'] ?? null,
+            'model' => $v['model'] ?? null,
+            'engineNumber' => $v['engine_number'] ?? null,
+            'chassisNumber' => $v['chassis_number'] ?? null,
 
-                /*
-                 * Vehicle number
-                 */
-                'vehicleNumber' =>
-                    $v['vehicle_number'] ?? null,
+            'finance' => $v['finance'] ?? null,
+            'branch' => $v['branch'] ?? null,
+            'area' => $v['area'] ?? null,
 
+            'agencyId' => $v['agency_id'] ?? null,
+            'repoStatus' => $v['repo_status'] ?? null,
 
-                /*
-                 * Agency information
-                 */
-                'agencyMobile' =>
-                    $v['agency_mobile'] ?? null,
+            'yardId' => isset($v['yard_id'])
+                ? (int) $v['yard_id']
+                : null,
 
-                'agencyIdGiveByFinance' =>
-                    $v['agency_id_give_by_finance'] ?? null,
-
-                'agencyMobile2' =>
-                    $v['agency_mobile2'] ?? null,
-
-                'agencyName' =>
-                    $v['agency_name'] ?? null,
-
-                'agencyManager' =>
-                    $v['agency_manager'] ?? null,
-
-
-                /*
-                 * Vehicle information
-                 */
-                'chassisNumber' =>
-                    $v['chassis_number'] ?? null,
-
-                'color' =>
-                    $v['color'] ?? null,
-
-                'manufactureName' =>
-                    $v['manufacture_name'] ?? null,
-
-                'vehicleMake' =>
-                    $v['vehicle_make'] ?? null,
-
-                'engineNumber' =>
-                    $v['engine_number'] ?? null,
-
-                /*
-                 * IMPORTANT:
-                 * Kotlin expects "model", NOT "vehicleModel"
-                 */
-                'model' =>
-                    $v['model'] ?? null,
-
-
-                /*
-                 * Customer information
-                 */
-                'ownerMobile' =>
-                    $v['owner_mobile'] ?? null,
-
-                /*
-                 * IMPORTANT:
-                 * Kotlin expects ownerName
-                 */
-                'ownerName' =>
-                    $v['owner_name']
-                    ?? $v['customer_name']
-                    ?? null,
-
-                /*
-                 * IMPORTANT:
-                 * Kotlin expects customerAddress
-                 */
-                'customerAddress' =>
-                    $v['customer_address']
-                    ?? $v['address']
-                    ?? null,
-
-                'customerArea' =>
-                    $v['customer_area'] ?? null,
-
-
-                /*
-                 * Location
-                 */
-                'branch' =>
-                    $v['branch'] ?? null,
-
-                'area' =>
-                    $v['area'] ?? null,
-
-
-                /*
-                 * Vehicle type
-                 */
-                'vehicleType' =>
-                    $v['vehicle_type'] ?? null,
-
-
-                /*
-                 * Repo status
-                 */
-                'repoStatus' =>
-                    $v['repo_status'] ?? null,
-
-
-                /*
-                 * DPD / allocation
-                 */
-                'allocationDpd' =>
-                    $v['allocation_dpd'] ?? null,
-
-
-                /*
-                 * Executive
-                 */
-                'executiveName' =>
-                    $v['executive_name'] ?? null,
-
-
-                /*
-                 * Area manager
-                 */
-                'areaManagerName' =>
-                    $v['area_manager_name'] ?? null,
-
-                'areaManagerMobileNo' =>
-                    $v['area_manager_mobile_no'] ?? null,
-
-                'areaManagerEmailId' =>
-                    $v['area_manager_email_id'] ?? null,
-
-
-                /*
-                 * Contact 2
-                 */
-                'contactName2' =>
-                    $v['contact_name2'] ?? null,
-
-                'contactName2Designation' =>
-                    $v['contact_name2_designation'] ?? null,
-
-                'contactName2MobileNo' =>
-                    $v['contact_name2_mobile_no'] ?? null,
-
-
-                /*
-                 * Region manager
-                 */
-                'regionManagerName' =>
-                    $v['region_manager_name'] ?? null,
-
-                'regionManagerMobileNo' =>
-                    $v['region_manager_mobile_no'] ?? null,
-
-                'regionManagerEmailId' =>
-                    $v['region_manager_email_id'] ?? null,
-
-
-                /*
-                 * Finance
-                 */
-                'finance' =>
-                    $v['finance'] ?? null,
-
-
-                /*
-                 * Agency ID
-                 */
-                'agencyId' =>
-                    $v['agency_id'] ?? null,
-
-
-                /*
-                 * Reference letter
-                 */
-                'refLetter' =>
-                    $v['ref_letter'] ?? null,
-
-
-                /*
-                 * Charges
-                 */
-                'totalCharges' =>
-                    isset($v['total_charges'])
-                        ? (float)$v['total_charges']
-                        : null,
-
-
-                /*
-                 * Upload information
-                 */
-                'uploadBy' =>
-                    $v['upload_by'] ?? null,
-
-                'uploadDate' =>
-                    $v['upload_date'] ?? null,
-
-
-                /*
-                 * Yard
-                 */
-                'yardId' =>
-                    isset($v['yard_id'])
-                        ? (int)$v['yard_id']
-                        : null,
-
-                'yardName' =>
-                    $v['yard_name'] ?? null,
-
-                'yardAddress' =>
-                    $v['yard_address'] ?? null
-            ];
-        },
-        $vehicles
-    );
+            'yardName' => $v['yard_name'] ?? null,
+            'yardAddress' => $v['yard_address'] ?? null
+        ];
+    }, $vehicles);
 }
+
+       
 public function updateDpdCharge(
     int $id,
     array $data

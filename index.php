@@ -530,5 +530,11 @@ elseif(
 ) {
     $vehicle->deleteByDate($m[1]);
 }
+elseif(
+    $method === 'GET' &&
+    $path === '/api/vehicles/by-key'
+) {
+    $vehicle->getByKey();
+}
  else errorResponse('API endpoint not found',404);
 } catch(Throwable $e) { errorResponse($e->getMessage(),500); }

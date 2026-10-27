@@ -38,7 +38,40 @@ public function activity()
  public function branchList(){jsonResponse($this->s->branchList((string)queryParam('agencyId',''),(string)queryParam('finance','')));}
  public function vehicles(){jsonResponse($this->s->vehicles((string)queryParam('agencyId',''),queryParam('finance'),queryParam('branch'),queryParam('year'),queryParam('month'),(string)queryParam('status','ALL')));}
  public function userReport(){jsonResponse($this->s->userReport((string)queryParam('userEmail','')));}
- public function financeExcel($agency){$rows=$this->s->finance($agency,queryParam('finance'),queryParam('branch'));$data=array_map(fn($r)=>[$r['finance'],$r['branch'],$r['totalVehicles'],$r['RepoInitAndParkedCount'],$r['releasedCount']],$rows);$this->excel->download('Finance_Report.xlsx','Finance Report',['Finance','Branch','Vehicles','Repo init and Parkeded','Released'],$data);}
+
+public function financeExcel($agency)
+{
+    $rows = $this->s->finance(
+        $agency,
+        queryParam('finance'),
+        queryParam('branch')
+    );
+
+    $data = array_map(
+        fn($r) => [
+            $r['finance'] ?? '',
+            $r['branch'] ?? '',
+            (int)($r['totalVehicles'] ?? 0),
+            (int)($r['repoInitAndParkedCount'] ?? 0),
+            (int)($r['releasedCount'] ?? 0)
+        ],
+        $rows
+    );
+
+    $this->excel->download(
+        'Finance_Report.xlsx',
+        'Finance Report',
+        [
+            'Finance',
+            'Branch',
+            'Vehicles',
+            'Repo init and Parked',
+            'Released'
+        ],
+        $data
+    );
+}
+
 public function activityExcel($agency)
 {
     $fromDate = queryParam('fromDate');
@@ -58,7 +91,7 @@ public function activityExcel($agency)
                 $r['userName'] ?? '',
                 $r['userEmail'] ?? '',
                 $r['totalSearches'] ?? 0,
-                $r['RepoInitAndParkedCount'] ?? 0,
+              $r['repoInitAndParkedCount'] ?? 0,
                 $r['releasedCount'] ?? 0,
                 $r['lastSearchTime'] ?? ''
             ];
@@ -73,31 +106,28 @@ public function activityExcel($agency)
             'User Name',
             'Email',
             'Total Searches',
-            'Repo init and Parkeded',
+            'Repo init and Parked',
             'Released',
             'Last Search Time'
         ],
         $data
     );
 }
+
 public function monthlyExcel($agency)
 {
     $year = (string) queryParam('year', '');
     $month = (string) queryParam('month', '');
 
-    $rows = $this->s->monthly(
-        $agency,
-        $year,
-        $month
-    );
+    $rows = $this->s->monthly($agency, $year, $month);
 
     $data = array_map(
         fn($r) => [
-            $r['repoYear'],
-            $r['repoMonth'],
-            (int) $r['totalVehicles'],
-            (int) $r['RepoInitAndParkedCount'],
-            (int) $r['releasedCount']
+            $r['repoYear'] ?? '',
+            $r['repoMonth'] ?? '',
+            (int)($r['totalVehicles'] ?? 0),
+            (int)($r['repoInitAndParkedCount'] ?? 0),
+            (int)($r['releasedCount'] ?? 0)
         ],
         $rows
     );
@@ -115,8 +145,29 @@ public function monthlyExcel($agency)
         $data
     );
 }
- public function userExcel(){ $r=$this->s->userReport((string)queryParam('userEmail',''));$this->excel->download('User_Report.xlsx','User Report',['Total Vehicle','Repo init and Parkeded','Released'],[[$r['totalVehicles'],$r['repoMarked'],$r['released']]]); }
- public function yardExcel($yardId){$agency=(string)queryParam('agencyId','');$status=(string)queryParam('status','ALL');$rows=$this->s->yardVehicles((int)$yardId,$agency,$status);$data=[];$n=1;foreach($rows as $r)$data[]=[$n++,$r['vehicle_number']??'',$r['repo_status']??'',$r['yard_name']??''];$name=strtoupper($status)==='ALL'?'All':(strtolower($status)==='Repo init and Parked'?'Repo_Marked':(strtolower($status)==='released'?'Released':str_replace(' ','_',$status)));$this->excel->download('Yard_Report_'.$name.'.xlsx','Yard Report',['Sr No','Vehicle Number','Status','Yard'],$data);}
+
+public function userExcel()
+{
+    $r = $this->s->userReport(
+        (string)queryParam('userEmail', '')
+    );
+
+    $this->excel->download(
+        'User_Report.xlsx',
+        'User Report',
+        [
+            'Total Vehicles',
+            'Repo init and Parked',
+            'Released'
+        ],
+        [[
+            (int)($r['totalVehicles'] ?? 0),
+            (int)($r['repoMarked'] ?? 0),
+            (int)($r['released'] ?? 0)
+        ]]
+    );
+}
+ public function yardExcel($yardId){$agency=(string)queryParam('agencyId','');$status=(string)queryParam('status','ALL');$rows=$this->s->yardVehicles((int)$yardId,$agency,$status);$data=[];$n=1;foreach($rows as $r)$data[]=[$n++,$r['vehicle_number']??'',$r['repo_status']??'',$r['yard_name']??''];$name=strtoupper($status)==='ALL'?'All':(strtolower($status)==='Repo init and Parked'?'Repo_init_and_Parked':(strtolower($status)==='released'?'Released':str_replace(' ','_',$status)));$this->excel->download('Yard_Report_'.$name.'.xlsx','Yard Report',['Sr No','Vehicle Number','Status','Yard'],$data);}
  public function financePdf($agency)
 {
     $rows = $this->s->finance(
@@ -130,7 +181,7 @@ public function monthlyExcel($agency)
             $r['finance'],
             $r['branch'],
             $r['totalVehicles'],
-            $r['RepoInitAndParkedCount'],
+          $r['repoInitAndParkedCount'] ?? 0,
             $r['releasedCount']
         ],
         $rows
@@ -172,7 +223,7 @@ public function monthlyPdf($agency)
             $r['repoYear'],
             $r['repoMonth'],
             (int)$r['totalVehicles'],
-            (int)$r['RepoInitAndParkedCount'],
+            $r['repoInitAndParkedCount'] ?? 0,
             (int)$r['releasedCount']
         ],
         $rows
@@ -211,7 +262,7 @@ public function activityPdf($agency)
                 $r['userName'] ?? '',
                 $r['userEmail'] ?? '',
                 $r['totalSearches'] ?? 0,
-                $r['RepoInitAndParkedCount'] ?? 0,
+                $r['repoInitAndParkedCount'] ?? 0,
                 $r['releasedCount'] ?? 0,
                 $r['lastSearchTime'] ?? ''
             ];
@@ -226,7 +277,7 @@ public function activityPdf($agency)
             'User Name',
             'Email',
             'Total Searches',
-            'Repo init and Parkeded',
+            'Repo init and Parked',
             'Released',
             'Last Search Time'
         ],
@@ -287,12 +338,11 @@ public function userPdf()
         $email
     );
 
-    $data = [[
-        $r['totalVehicles'] ?? 0,
-        $r['Repo init and Parked'] ?? 0,
-       
-        $r['released'] ?? 0
-    ]];
+   $data = [[
+    (int)($r['totalVehicles'] ?? 0),
+    (int)($r['repoMarked'] ?? 0),
+    (int)($r['released'] ?? 0)
+]];
 
     $this->pdf->download(
         'User_Report.pdf',

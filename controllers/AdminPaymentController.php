@@ -148,8 +148,8 @@ public function createPayment(): void
             (string)($body['vehicle_type'] ?? '')
         );
 
-        $repoMarkRate = (float)(
-            $body['repo_mark_rate'] ?? 0
+        $RepoinitandParkedRate = (float)(
+            $body['Repo_init_and_Parked_rate'] ?? 0
         );
 
         $parkedRate = (float)(
@@ -175,7 +175,7 @@ public function createPayment(): void
         $result = $this->paymentService->saveRate(
             $agencyId,
             $vehicleType,
-            $repoMarkRate,
+            $RepoinitandParkedRate,
             $parkedRate
         );
 

@@ -1,8 +1,52 @@
 <?php
 class ReportService {
     public function __construct(private PDO $pdo) {}
-    public function summary(string $agency): array { $s=$this->pdo->prepare("SELECT COUNT(*) total, SUM(CASE WHEN LOWER(repo_status)='open list' THEN 1 ELSE 0 END) openlist, SUM(CASE WHEN LOWER(repo_status)='contacted' THEN 1 ELSE 0 END) contacted, SUM(CASE WHEN LOWER(repo_status)='Repo init and Parked' THEN 1 ELSE 0 END) repoMark, SUM(CASE WHEN LOWER(repo_status)='parked' THEN 1 ELSE 0 END) parked, SUM(CASE WHEN LOWER(repo_status)='released' THEN 1 ELSE 0 END) released FROM vehicle WHERE agency_id=?");$s->execute([$agency]);$r=$s->fetch();return ['totalVehicles'=>(int)$r['total'],'openlist'=>(int)$r['openlist'],'contacted'=>(int)$r['contacted'],'repoMark'=>(int)$r['repoMark'],'parked'=>(int)$r['parked'],'released'=>(int)$r['released']]; }
-    public function finance(string $agency,?string $finance,?string $branch): array {$sql="SELECT finance,branch,COUNT(*) totalVehicles,SUM(CASE WHEN LOWER(repo_status)='Repo init and Parked' THEN 1 ELSE 0 END) repoMarkedCount,SUM(CASE WHEN LOWER(repo_status)='parked' THEN 1 ELSE 0 END) parkedCount,SUM(CASE WHEN LOWER(repo_status)='released' THEN 1 ELSE 0 END) releasedCount FROM vehicle WHERE agency_id=?";$p=[$agency];if($finance!==null&&$finance!==''){ $sql.=' AND finance=?';$p[]=$finance;}if($branch!==null&&$branch!==''){ $sql.=' AND branch=?';$p[]=$branch;}$sql.=' GROUP BY finance,branch ORDER BY finance,branch';$s=$this->pdo->prepare($sql);$s->execute($p);return array_map(fn($r)=>['finance'=>$r['finance'],'branch'=>$r['branch'],'totalVehicles'=>(int)$r['totalVehicles'],'repoMarkedCount'=>(int)$r['repoMarkedCount'],'parkedCount'=>(int)$r['parkedCount'],'releasedCount'=>(int)$r['releasedCount']],$s->fetchAll());}
+ public function summary(string $agency): array
+{
+    $sql = "
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE
+                WHEN LOWER(TRIM(repo_status)) = 'open list'
+                THEN 1 ELSE 0
+            END) AS openlist,
+            SUM(CASE
+                WHEN LOWER(TRIM(repo_status)) = 'contacted'
+                THEN 1 ELSE 0
+            END) AS contacted,
+            SUM(CASE
+                WHEN LOWER(TRIM(repo_status)) = 'repo init and parked'
+                THEN 1 ELSE 0
+            END) AS RepoinitandParked,
+            SUM(CASE
+                WHEN LOWER(TRIM(repo_status)) = 'parked'
+                THEN 1 ELSE 0
+            END) AS parked,
+            SUM(CASE
+                WHEN LOWER(TRIM(repo_status)) = 'released'
+                THEN 1 ELSE 0
+            END) AS released
+        FROM vehicle
+        WHERE agency_id = ?
+    ";
+
+    $stmt = $this->pdo->prepare($sql);
+    $stmt->execute([$agency]);
+    $r = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return [
+        'totalVehicles' => (int)($r['total'] ?? 0),
+        'openlist' => (int)($r['openlist'] ?? 0),
+        'contacted' => (int)($r['contacted'] ?? 0),
+        'repoMark' => (int)($r['RepoinitandParked'] ?? 0),
+        'parked' => (int)($r['parked'] ?? 0),
+        'released' => (int)($r['released'] ?? 0)
+    ];
+}
+    public function finance(
+        string $agency,?string $finance,?string $branch
+        ): array {
+            $sql="SELECT finance,branch,COUNT(*) totalVehicles,SUM(CASE WHEN LOWER(TRIM(repo_status)) = 'repo init and parked' THEN 1 ELSE 0 END)  AS repoInitAndParkedCount,SUM(CASE WHEN LOWER(repo_status)='parked' THEN 1 ELSE 0 END) parkedCount,SUM(CASE WHEN LOWER(repo_status)='released' THEN 1 ELSE 0 END) releasedCount FROM vehicle WHERE agency_id=?";$p=[$agency];if($finance!==null&&$finance!==''){ $sql.=' AND finance=?';$p[]=$finance;}if($branch!==null&&$branch!==''){ $sql.=' AND branch=?';$p[]=$branch;}$sql.=' GROUP BY finance,branch ORDER BY finance,branch';$s=$this->pdo->prepare($sql);$s->execute($p);return array_map(fn($r)=>['finance'=>$r['finance'],'branch'=>$r['branch'],'totalVehicles'=>(int)$r['totalVehicles'],'repoInitAndParkedCount' => (int)$r['repoInitAndParkedCount'],'parkedCount'=>(int)$r['parkedCount'],'releasedCount'=>(int)$r['releasedCount']],$s->fetchAll());}
    public function monthly(
     string $agency,
     string $year,
@@ -80,7 +124,7 @@ class ReportService {
            COUNT(
     DISTINCT CASE
         WHEN
-            UPPER(TRIM(v.repo_status)) = 'Repo init and Parked'
+           UPPER(TRIM(v.repo_status)) = 'REPO INIT AND PARKED'
             AND v.Repo_init_and_Parked_at >= ?
             AND v.Repo_init_and_Parked_at < ?
         THEN CONCAT(
@@ -91,7 +135,7 @@ class ReportService {
             v.loan_number
         )
     END
-) AS repoMarkedCount,
+) AS RepoinitandParkededCount,
 
            
 
@@ -127,12 +171,6 @@ class ReportService {
                     AND v.Repo_init_and_Parked_at < ?
                 )
 
-                OR
-
-                (
-                    v.parked_at >= ?
-                    AND v.parked_at < ?
-                )
 
                 OR
 
@@ -145,50 +183,37 @@ class ReportService {
     ";
 
     $params = [
+    // Report year and month
+    $year,
+    (int)$month,
 
-        // Display year/month
-        $year,
-        (int)$month,
+    // Total vehicles: Repo init and Parked date
+    $startDate,
+    $endDate,
 
-        // Total vehicles - Repo init and Parked
-        $startDate,
-        $endDate,
+    // Total vehicles: Released date
+    $startDate,
+    $endDate,
 
-        // Total vehicles - parked
-        $startDate,
-        $endDate,
+    // Repo init and Parked count
+    $startDate,
+    $endDate,
 
-        // Total vehicles - released
-        $startDate,
-        $endDate,
+    // Released count
+    $startDate,
+    $endDate,
 
-        // Repo init and Parkeded count
-        $startDate,
-        $endDate,
+    // Agency
+    $agency,
 
-        // Parked count
-        $startDate,
-        $endDate,
+    // WHERE: Repo init and Parked date
+    $startDate,
+    $endDate,
 
-        // Released count
-        $startDate,
-        $endDate,
-
-        // Agency
-        $agency,
-
-        // WHERE - Repo init and Parked
-        $startDate,
-        $endDate,
-
-        // WHERE - parked
-        $startDate,
-        $endDate,
-
-        // WHERE - released
-        $startDate,
-        $endDate
-    ];
+    // WHERE: Released date
+    $startDate,
+    $endDate
+];
 
     $stmt = $this->pdo->prepare($sql);
 
@@ -203,11 +228,8 @@ class ReportService {
         'totalVehicles' =>
             (int)($row['totalVehicles'] ?? 0),
 
-        'repoMarkedCount' =>
-            (int)($row['repoMarkedCount'] ?? 0),
-
-        'parkedCount' =>
-            (int)($row['parkedCount'] ?? 0),
+       'repoInitAndParkedCount' =>
+    (int)($row['RepoinitandParkededCount'] ?? 0),
 
         'releasedCount' =>
             (int)($row['releasedCount'] ?? 0)
@@ -314,7 +336,7 @@ class ReportService {
                     v.loan_number
                 )
             END
-        ) AS repo_mark_count,
+        ) AS Repo_init_and_Parked_count,
 
        
 
@@ -397,8 +419,7 @@ class ReportService {
         $actionParams[] = $fromDate . ' 00:00:00';
         $actionParams[] = $toDate;
 
-        $actionParams[] = $fromDate . ' 00:00:00';
-        $actionParams[] = $toDate;
+       
 
     } elseif (
         $fromDate !== null &&
@@ -422,7 +443,7 @@ class ReportService {
 
         $actionParams[] = $fromDate . ' 00:00:00';
         $actionParams[] = $fromDate . ' 00:00:00';
-        $actionParams[] = $fromDate . ' 00:00:00';
+       
 
     } elseif (
         $toDate !== null &&
@@ -446,7 +467,7 @@ class ReportService {
 
         $actionParams[] = $toDate;
         $actionParams[] = $toDate;
-        $actionParams[] = $toDate;
+        
     }
 }
            
@@ -478,10 +499,12 @@ class ReportService {
             trim((string)$row['email'])
         );
 
-        $actionsByEmail[$email] = [
-    'repoMarkedCount' => (int)$row['repo_mark_count'],
-    'parkedCount' => (int)$row['parked_count'],
-    'releasedCount' => (int)$row['released_count']
+     $actionsByEmail[$email] = [
+    'repoInitAndParkedCount' =>
+        (int)($row['Repo_init_and_Parked_count'] ?? 0),
+
+    'releasedCount' =>
+        (int)($row['released_count'] ?? 0)
 ];
     }
 
@@ -500,7 +523,7 @@ class ReportService {
         );
 
        $action = $actionsByEmail[$email] ?? [
-    'repoMarkedCount' => 0,
+    'repoInitAndParkedCount' => 0,
     'parkedCount' => 0,
     'releasedCount' => 0
 ];
@@ -511,9 +534,7 @@ $result[] = [
 
     'totalSearches' => (int)$row['total_searches'],
 
-    'repoMarkedCount' => (int)$action['repoMarkedCount'],
-
-    'parkedCount' => (int)$action['parkedCount'],
+    'repoInitAndParkedCount' => (int)$action['repoInitAndParkedCount'],
 
     'releasedCount' => (int)$action['releasedCount'],
 
@@ -559,9 +580,8 @@ $result[] = [
          * an action.
          */
         if (
-    (int)$row['repo_mark_count'] === 0 &&
-    (int)$row['parked_count'] === 0 &&
-    (int)$row['released_count'] === 0
+    (int)($row['Repo_init_and_Parked_count'] ?? 0) === 0 &&
+    (int)($row['released_count'] ?? 0) === 0
 ) {
     continue;
 }
@@ -580,11 +600,8 @@ $result[] = [
             'totalSearches' =>
                 0,
 
-            'repoMarkedCount' =>
-                (int)$row['repo_mark_count'],
-
-            'parkedCount' =>
-                (int)$row['parked_count'],
+            'repoInitAndParkedCount' =>
+                (int)$row['Repo_init_and_Parked_count'],
 
            'releasedCount' => (int)$row['released_count'],
 
@@ -703,7 +720,7 @@ $result[] = [
         if (strcasecmp(trim($status), 'Repo init and Parked') === 0) {
 
             $sql .= "
-                AND UPPER(TRIM(v.repo_status)) = 'Repo init and Parked'
+              AND UPPER(TRIM(v.repo_status)) = 'REPO INIT AND PARKED'
             ";
         }
 
@@ -857,8 +874,7 @@ $result[] = [
     if ($email === '') {
         return [
             'totalVehicles' => 0,
-            'repoMarked' => 0,
-            'parked' => 0,
+            'RepoinitandParkeded' => 0,
             'released' => 0
         ];
     }
@@ -885,8 +901,7 @@ $result[] = [
     if (!$user) {
         return [
             'totalVehicles' => 0,
-            'repoMarked' => 0,
-            'parked' => 0,
+            'RepoinitandParkeded' => 0,
             'released' => 0
         ];
     }
@@ -941,19 +956,19 @@ $result[] = [
      * Actual action user = Repo_init_and_Parked_by
      * ---------------------------------------------------------
      */
-    $repoStmt = $this->pdo->prepare("
-        SELECT COUNT(*)
-        FROM vehicle
-        WHERE agency_id = ?
-          AND Repo_init_and_Parked_by = ?
-    ");
+   $repoStmt = $this->pdo->prepare("
+    SELECT COUNT(*)
+    FROM vehicle
+    WHERE agency_id = ?
+      AND Repo_init_and_Parked_by = ?
+");
 
-    $repoStmt->execute([
-        $agencyId,
-        $userId
-    ]);
+$repoStmt->execute([
+    $agencyId,
+    $userId
+]);
 
-    $repoMarked = (int)$repoStmt->fetchColumn();
+$repoInitAndParked = (int) $repoStmt->fetchColumn();
 
 
 
@@ -983,10 +998,11 @@ $released = (int) $releasedStmt->fetchColumn();
 
 
     return [
-        'totalVehicles' => $totalVehicles,
-        'repoMarked' => $repoMarked,
-        'released' => $released
-    ];
+    'totalVehicles' => $totalVehicles,
+    'repoMarked' => $repoInitAndParked,
+    'parked' => 0,
+    'released' => $released
+];
 }
     public function yardVehicles(int $yardId,string $agency,string $status): array {$sql='SELECT v.*,y.yard_name,y.yard_address,y.yard_manager_name,y.yard_contact_no,y.agency_id yard_agency_id FROM vehicle v LEFT JOIN yard y ON y.id=v.yard_id WHERE v.yard_id=? AND v.agency_id=?';$p=[$yardId,$agency];if(strtoupper($status)!=='ALL'){$sql.=' AND UPPER(v.repo_status)=UPPER(?)';$p[]=$status;}$s=$this->pdo->prepare($sql);$s->execute($p);return $s->fetchAll();}
 }

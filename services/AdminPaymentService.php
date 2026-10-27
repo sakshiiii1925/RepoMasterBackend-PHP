@@ -101,21 +101,17 @@ class AdminPaymentService
 
     if (
         strcasecmp($workType, 'Repo init and Parked') === 0 ||
-        strcasecmp($workType, 'repo_mark') === 0 ||
-        strcasecmp($workType, 'repomark') === 0
+        strcasecmp($workType, 'Repo_init_and_Parked') === 0 ||
+        strcasecmp($workType, 'RepoinitandParked') === 0
     ) {
 
         $workType = 'Repo init and Parked';
 
-    } elseif (
-        strcasecmp($workType, 'parked') === 0 ||
-        strcasecmp($workType, 'parked in godown') === 0 ||
-        strcasecmp($workType, 'parked_in_godown') === 0
-    ) {
+    } 
 
-        $workType = 'Parked';
+       
 
-    } else {
+    else {
 
         throw new InvalidArgumentException(
             'Invalid work_type. Use Repo init and Parked or Parked'
@@ -136,8 +132,7 @@ class AdminPaymentService
             vehicle_type,
             repo_status,
             agency_id,
-            Repo_init_and_Parked_by,
-            parked_by
+            Repo_init_and_Parked_by
         FROM vehicle
         WHERE repo_year = ?
           AND repo_month = ?
@@ -177,17 +172,7 @@ class AdminPaymentService
             );
         }
 
-    } elseif ($workType === 'Parked') {
-
-        if (
-            (int)($vehicle['parked_by'] ?? 0)
-            !== $userId
-        ) {
-            throw new RuntimeException(
-                'Selected user did not complete Parked work for this vehicle'
-            );
-        }
-    }
+    } 
 
 
     // ==========================================
@@ -226,8 +211,8 @@ class AdminPaymentService
 
     $rateStmt = $this->pdo->prepare("
         SELECT
-            repo_mark_rate,
-            parked_rate
+            Repo_init_and_Parked_rate
+           
         FROM payment_rates
         WHERE agency_id = ?
           AND LOWER(TRIM(vehicle_type)) =
@@ -256,39 +241,30 @@ class AdminPaymentService
     // SELECT RATE
     // ==========================================
 
-    if ($workType === 'Repo init and Parked') {
+   $amount = (float)$rate['Repo_init_and_Parked_rate'];
 
-        $amount = (float)$rate['repo_mark_rate'];
-
-    } else {
-
-        $amount = (float)$rate['parked_rate'];
-    }
-
-
-    if ($amount <= 0) {
-        throw new RuntimeException(
-            'Payment rate is zero or not configured for '
-            . $vehicleType
-            . ' - '
-            . $workType
-        );
-    }
+if ($amount <= 0) {
+    throw new RuntimeException(
+        'Payment rate is zero or not configured for '
+        . $vehicleType
+        . ' - '
+        . $workType
+    );
+}
 
 // ==========================================
 // GET ALREADY PAID AMOUNT
 // ==========================================
 
 $paidStmt = $this->pdo->prepare("
-    SELECT
-        COALESCE(SUM(amount), 0)
+    SELECT COALESCE(SUM(amount), 0)
     FROM admin_payment
     WHERE user_id = ?
       AND repo_year = ?
       AND repo_month = ?
       AND loan_number = ?
-      AND LOWER(TRIM(repo_status)) =
-          LOWER(TRIM(?))
+      AND LOWER(TRIM(repo_status)) = LOWER(TRIM(?))
+      AND deleted_at IS NULL
 ");
 
 $paidStmt->execute([
@@ -350,12 +326,7 @@ if ($paymentAmount <= 0) {
     );
 }
 
-if ($paymentAmount > $remainingAmount) {
-    throw new InvalidArgumentException(
-        'Payment amount cannot be greater than remaining amount: '
-        . number_format($remainingAmount, 2)
-    );
-}
+
 
 if ($paymentAmount > $remainingAmount) {
     throw new InvalidArgumentException(
@@ -501,20 +472,15 @@ if ($paymentDate !== '') {
         'summary' => $summary
     ];
 }
+
 public function getUserPaymentSummary(int $userId): array
 {
     if ($userId <= 0) {
-        throw new InvalidArgumentException(
-            'Valid user_id is required'
-        );
+        throw new InvalidArgumentException('Valid user_id is required');
     }
 
-
-    // ==========================================
-    // GET ALL COMPLETED VEHICLE WORK
-    // ==========================================
-
-    $sql = "
+    // Get vehicles where this user completed Repo init and Parked work.
+    $stmt = $this->pdo->prepare("
         SELECT
             v.repo_year,
             v.repo_month,
@@ -522,166 +488,63 @@ public function getUserPaymentSummary(int $userId): array
             v.vehicle_number,
             v.vehicle_type,
             v.agency_id,
-            v.Repo_init_and_Parked_by,
-            v.parked_by
+            v.Repo_init_and_Parked_by
         FROM vehicle v
-        WHERE
-            v.Repo_init_and_Parked_by = ?
-            OR
-            v.parked_by = ?
-        ORDER BY v.vehicle_number ASC
-    ";
+        WHERE v.Repo_init_and_Parked_by = ?
+    ");
 
-    $stmt = $this->pdo->prepare($sql);
-
-    $stmt->execute([
-        $userId,
-        $userId
-    ]);
-
+    $stmt->execute([$userId]);
     $vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 
     $totalDue = 0.0;
     $completedWork = 0;
 
-
-    // ==========================================
-    // CALCULATE TOTAL DUE
-    // ==========================================
-
-    foreach ($vehicles as $vehicle) {
-
-        $agencyId = trim(
-            (string)$vehicle['agency_id']
-        );
-
-        $vehicleType = trim(
-            (string)$vehicle['vehicle_type']
-        );
-
-        if (
-            $agencyId === '' ||
-            $vehicleType === ''
-        ) {
-            continue;
-        }
-
-
-        // Get current agency rate
-        $rateStmt = $this->pdo->prepare("
-            SELECT
-                repo_mark_rate,
-                parked_rate
-            FROM payment_rates
-            WHERE agency_id = ?
-              AND LOWER(TRIM(vehicle_type)) =
-                  LOWER(TRIM(?))
-            LIMIT 1
-        ");
-
-        $rateStmt->execute([
-            $agencyId,
-            $vehicleType
-        ]);
-
-        $rate = $rateStmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$rate) {
-            continue;
-        }
-
-
-        // Repo init and Parked completed by this user
-        if (
-            (int)$vehicle['Repo_init_and_Parked_by'] === $userId
-        ) {
-
-            $totalDue +=
-                (float)$rate['repo_mark_rate'];
-
-            $completedWork++;
-        }
-
-
-        // Parked completed by this user
-        if (
-            (int)$vehicle['parked_by'] === $userId
-        ) {
-
-            $totalDue +=
-                (float)$rate['parked_rate'];
-
-            $completedWork++;
-        }
-    }
-
-
-    // ==========================================
-    // GET TOTAL PAID
-    // ==========================================
-
-    $paidStmt = $this->pdo->prepare("
-        SELECT
-            COALESCE(SUM(amount), 0)
-        FROM admin_payment
-        WHERE user_id = ?
+    $rateStmt = $this->pdo->prepare("
+        SELECT Repo_init_and_Parked_rate
+        FROM payment_rates
+        WHERE agency_id = ?
+          AND LOWER(TRIM(vehicle_type)) = LOWER(TRIM(?))
+        LIMIT 1
     ");
 
-    $paidStmt->execute([
-        $userId
-    ]);
+    foreach ($vehicles as $vehicle) {
+        $agencyId = trim((string)($vehicle['agency_id'] ?? ''));
+        $vehicleType = trim((string)($vehicle['vehicle_type'] ?? ''));
 
-    $totalPaid = (float)$paidStmt->fetchColumn();
+        if ($agencyId === '' || $vehicleType === '') {
+            continue;
+        }
 
+        $rateStmt->execute([$agencyId, $vehicleType]);
+        $rate = $rateStmt->fetchColumn();
 
-    // ==========================================
-    // REMAINING
-    // ==========================================
-
-    $remaining = $totalDue - $totalPaid;
-
-    /*
-     * Never return negative remaining.
-     */
-    if ($remaining < 0) {
-        $remaining = 0;
+        if ($rate !== false) {
+            $totalDue += (float)$rate;
+            $completedWork++;
+        }
     }
 
+    $paidStmt = $this->pdo->prepare("
+        SELECT COALESCE(SUM(amount), 0)
+        FROM admin_payment
+        WHERE user_id = ?
+          AND deleted_at IS NULL
+    ");
+
+    $paidStmt->execute([$userId]);
+    $totalPaid = (float)$paidStmt->fetchColumn();
+
+    $remaining = max(0, $totalDue - $totalPaid);
 
     return [
-        'user_id' =>
-            $userId,
-
-        'completed_work' =>
-            $completedWork,
-
-        'total_due' =>
-            number_format(
-                $totalDue,
-                2,
-                '.',
-                ''
-            ),
-
-        'total_paid' =>
-            number_format(
-                $totalPaid,
-                2,
-                '.',
-                ''
-            ),
-
-        'remaining' =>
-            number_format(
-                $remaining,
-                2,
-                '.',
-                ''
-            )
+        'user_id' => $userId,
+        'completed_work' => $completedWork,
+        'total_due' => number_format($totalDue, 2, '.', ''),
+        'total_paid' => number_format($totalPaid, 2, '.', ''),
+        'remaining' => number_format($remaining, 2, '.', '')
     ];
 }
-       
+
     /**
      * Get all payment rates for an agency.
      */
@@ -692,8 +555,7 @@ public function getUserPaymentSummary(int $userId): array
                 id,
                 agency_id,
                 vehicle_type,
-                repo_mark_rate,
-                parked_rate,
+                Repo_init_and_Parked_rate,
                 created_at,
                 updated_at
             FROM payment_rates
@@ -713,8 +575,7 @@ public function getUserPaymentSummary(int $userId): array
     public function saveRate(
         string $agencyId,
         string $vehicleType,
-        float $repoMarkRate,
-        float $parkedRate
+        float $RepoinitandParkedRate
     ): array {
 
         $agencyId = trim($agencyId);
@@ -732,17 +593,13 @@ public function getUserPaymentSummary(int $userId): array
             );
         }
 
-        if ($repoMarkRate < 0) {
+        if ($RepoinitandParkedRate < 0) {
             throw new InvalidArgumentException(
-                'repo_mark_rate cannot be negative'
+                'Repo_init_and_Parked_rate cannot be negative'
             );
         }
 
-        if ($parkedRate < 0) {
-            throw new InvalidArgumentException(
-                'parked_rate cannot be negative'
-            );
-        }
+    
 
         /*
          * Check whether this agency already has
@@ -770,14 +627,12 @@ public function getUserPaymentSummary(int $userId): array
             $stmt = $this->pdo->prepare("
                 UPDATE payment_rates
                 SET
-                    repo_mark_rate = ?,
-                    parked_rate = ?
+                    Repo_init_and_Parked_rate = ?
                 WHERE id = ?
             ");
 
             $stmt->execute([
-                $repoMarkRate,
-                $parkedRate,
+                $RepoinitandParkedRate,
                 $existing['id']
             ]);
 
@@ -787,21 +642,17 @@ public function getUserPaymentSummary(int $userId): array
 
             // Create new rate
             $stmt = $this->pdo->prepare("
-                INSERT INTO payment_rates
-                (
-                    agency_id,
-                    vehicle_type,
-                    repo_mark_rate,
-                    parked_rate
-                )
-                VALUES (?, ?, ?, ?)
-            ");
-
+    INSERT INTO payment_rates (
+        agency_id,
+        vehicle_type,
+        Repo_init_and_Parked_rate
+    )
+    VALUES (?, ?, ?)
+");
             $stmt->execute([
                 $agencyId,
                 $vehicleType,
-                $repoMarkRate,
-                $parkedRate
+                $RepoinitandParkedRate
             ]);
 
             $id = (int)$this->pdo->lastInsertId();
@@ -815,8 +666,7 @@ public function getUserPaymentSummary(int $userId): array
                 id,
                 agency_id,
                 vehicle_type,
-                repo_mark_rate,
-                parked_rate,
+                Repo_init_and_Parked_rate,
                 created_at,
                 updated_at
             FROM payment_rates
@@ -889,30 +739,17 @@ public function calculateVehiclePayment(
     // ==========================================
     // NORMALIZE WORK TYPE
     // ==========================================
-
-    if (
-        strcasecmp($workType, 'Repo init and Parked') === 0 ||
-        strcasecmp($workType, 'repo_mark') === 0 ||
-        strcasecmp($workType, 'Repo init and Parkeded') === 0 ||
-        strcasecmp($workType, 'repo_marked') === 0
-    ) {
-
-        $workType = 'Repo init and Parked';
-
-    } elseif (
-        strcasecmp($workType, 'parked') === 0 ||
-        strcasecmp($workType, 'parked in godown') === 0 ||
-        strcasecmp($workType, 'parked_in_godown') === 0
-    ) {
-
-        $workType = 'Parked';
-
-    } else {
-
-        throw new InvalidArgumentException(
-            'Invalid work_type. Use Repo init and Parked or Parked'
-        );
-    }
+if (
+    strcasecmp($workType, 'Repo init and Parked') === 0 ||
+    strcasecmp($workType, 'Repo_init_and_Parked') === 0 ||
+    strcasecmp($workType, 'RepoinitandParked') === 0
+) {
+    $workType = 'Repo init and Parked';
+} else {
+    throw new InvalidArgumentException(
+        'Invalid work_type. Use Repo init and Parked'
+    );
+}
 
     // ==========================================
     // FIND VEHICLE
@@ -928,9 +765,7 @@ public function calculateVehiclePayment(
             repo_status,
             agency_id,
             Repo_init_and_Parked_by,
-            Repo_init_and_Parked_at,
-            parked_by,
-            parked_at
+            Repo_init_and_Parked_at
         FROM vehicle
         WHERE repo_year = ?
           AND repo_month = ?
@@ -955,35 +790,15 @@ public function calculateVehiclePayment(
     // ==========================================
     // VERIFY SELECTED USER COMPLETED WORK
     // ==========================================
+if (
+    (int)($vehicle['Repo_init_and_Parked_by'] ?? 0) !== $userId
+) {
+    throw new RuntimeException(
+        'Selected user did not complete Repo init and Parked for this vehicle'
+    );
+}
 
-    if ($workType === 'Repo init and Parked') {
-
-        if (
-            (int)($vehicle['Repo_init_and_Parked_by'] ?? 0)
-            !== $userId
-        ) {
-            throw new RuntimeException(
-                'Selected user did not complete Repo init and Parked for this vehicle'
-            );
-        }
-
-        $completedAt =
-            $vehicle['Repo_init_and_Parked_at'] ?? null;
-
-    } else {
-
-        if (
-            (int)($vehicle['parked_by'] ?? 0)
-            !== $userId
-        ) {
-            throw new RuntimeException(
-                'Selected user did not complete Parked work for this vehicle'
-            );
-        }
-
-        $completedAt =
-            $vehicle['parked_at'] ?? null;
-    }
+$completedAt = $vehicle['Repo_init_and_Parked_at'] ?? null;
 
     // ==========================================
     // VEHICLE TYPE
@@ -1018,15 +833,13 @@ public function calculateVehiclePayment(
     // ==========================================
 
     $rateStmt = $this->pdo->prepare("
-        SELECT
-            repo_mark_rate,
-            parked_rate
-        FROM payment_rates
-        WHERE agency_id = ?
-          AND LOWER(TRIM(vehicle_type)) =
-              LOWER(TRIM(?))
-        LIMIT 1
-    ");
+    SELECT Repo_init_and_Parked_rate
+    FROM payment_rates
+    WHERE agency_id = ?
+      AND LOWER(TRIM(vehicle_type)) =
+          LOWER(TRIM(?))
+    LIMIT 1
+");
 
     $rateStmt->execute([
         $agencyId,
@@ -1048,25 +861,16 @@ public function calculateVehiclePayment(
     // TOTAL AMOUNT FOR THIS WORK
     // ==========================================
 
-    if ($workType === 'Repo init and Parked') {
+   $totalAmount = (float)$rate['Repo_init_and_Parked_rate'];
 
-        $totalAmount =
-            (float)$rate['repo_mark_rate'];
-
-    } else {
-
-        $totalAmount =
-            (float)$rate['parked_rate'];
-    }
-
-    if ($totalAmount <= 0) {
-        throw new RuntimeException(
-            'Payment rate is zero or not configured for '
-            . $vehicleType
-            . ' - '
-            . $workType
-        );
-    }
+if ($totalAmount <= 0) {
+    throw new RuntimeException(
+        'Payment rate is zero or not configured for '
+        . $vehicleType
+        . ' - '
+        . $workType
+    );
+}
 
     // ==========================================
     // GET ALREADY PAID AMOUNT
@@ -1082,6 +886,7 @@ public function calculateVehiclePayment(
           AND loan_number = ?
           AND LOWER(TRIM(repo_status)) =
               LOWER(TRIM(?))
+              AND deleted_at IS NULL
     ");
 
     $paidStmt->execute([
@@ -1118,22 +923,22 @@ public function calculateVehiclePayment(
     // ==========================================
 
     $historyStmt = $this->pdo->prepare("
-        SELECT
-            id,
-            amount,
-            payment_method,
-            payment_date,
-            remarks,
-            created_at
-        FROM admin_payment
-        WHERE user_id = ?
-          AND repo_year = ?
-          AND repo_month = ?
-          AND loan_number = ?
-          AND LOWER(TRIM(repo_status)) =
-              LOWER(TRIM(?))
-        ORDER BY id ASC
-    ");
+    SELECT
+        id,
+        amount,
+        payment_method,
+        payment_date,
+        remarks,
+        created_at
+    FROM admin_payment
+    WHERE user_id = ?
+      AND repo_year = ?
+      AND repo_month = ?
+      AND loan_number = ?
+      AND LOWER(TRIM(repo_status)) = LOWER(TRIM(?))
+      AND deleted_at IS NULL
+    ORDER BY id ASC
+");
 
     $historyStmt->execute([
         $userId,
@@ -1273,138 +1078,77 @@ public function getMyPaymentHistory(int $userId): array
 
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
+
 public function getMyPaymentSummary(int $userId): array
 {
-    /*
-     * Calculate total amount that this user should receive
-     * from completed Repo init and Parked and Parked work.
-     */
+    if ($userId <= 0) {
+        throw new InvalidArgumentException('Valid user_id is required');
+    }
 
-    $workSql = "
+    $stmt = $this->pdo->prepare("
         SELECT
             v.repo_year,
             v.repo_month,
             v.loan_number,
             v.vehicle_number,
             v.vehicle_type,
-            v.agency_id,
-            'Repo init and Parked' AS work_type
+            v.agency_id
         FROM vehicle v
         WHERE v.Repo_init_and_Parked_by = ?
+    ");
 
-        UNION ALL
-
-        SELECT
-            v.repo_year,
-            v.repo_month,
-            v.loan_number,
-            v.vehicle_number,
-            v.vehicle_type,
-            v.agency_id,
-            'Parked' AS work_type
-        FROM vehicle v
-        WHERE v.parked_by = ?
-    ";
-
-    $stmt = $this->pdo->prepare($workSql);
-    $stmt->execute([
-        $userId,
-        $userId
-    ]);
-
+    $stmt->execute([$userId]);
     $works = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $totalDue = 0.0;
 
-    foreach ($works as $work) {
+    $rateStmt = $this->pdo->prepare("
+        SELECT Repo_init_and_Parked_rate
+        FROM payment_rates
+        WHERE agency_id = ?
+          AND LOWER(TRIM(vehicle_type)) = LOWER(TRIM(?))
+        LIMIT 1
+    ");
 
-        $rateColumn =
-            $work['work_type'] === 'Repo init and Parked'
-                ? 'repo_mark_rate'
-                : 'parked_rate';
+    $totalDue = 0.0;
+$completedWork = 0;
 
-        $rateSql = "
-            SELECT {$rateColumn}
-            FROM payment_rates
-            WHERE agency_id = ?
-              AND UPPER(vehicle_type) = UPPER(?)
-            LIMIT 1
-        ";
+foreach ($works as $work) {
+    $agencyId = trim((string)($work['agency_id'] ?? ''));
+    $vehicleType = trim((string)($work['vehicle_type'] ?? ''));
 
-        $rateStmt =
-            $this->pdo->prepare($rateSql);
-
-        $rateStmt->execute([
-            $work['agency_id'],
-            $work['vehicle_type']
-        ]);
-
-        $rate =
-            $rateStmt->fetchColumn();
-
-        if ($rate !== false) {
-            $totalDue += (float)$rate;
-        }
+    if ($agencyId === '' || $vehicleType === '') {
+        continue;
     }
 
-    /*
-     * Total payments already made.
-     */
+    $rateStmt->execute([$agencyId, $vehicleType]);
+    $rate = $rateStmt->fetchColumn();
 
-    $paidSql = "
+    if ($rate !== false && (float)$rate > 0) {
+        $totalDue += (float)$rate;
+        $completedWork++;
+    }
+}
+
+    $paidStmt = $this->pdo->prepare("
         SELECT COALESCE(SUM(amount), 0)
         FROM admin_payment
         WHERE user_id = ?
-    ";
+          AND deleted_at IS NULL
+    ");
 
-    $paidStmt =
-        $this->pdo->prepare($paidSql);
-
-    $paidStmt->execute([
-        $userId
-    ]);
-
-    $totalPaid =
-        (float)$paidStmt->fetchColumn();
-
-    $remaining =
-        max(
-            0,
-            $totalDue - $totalPaid
-        );
+    $paidStmt->execute([$userId]);
+    $totalPaid = (float)$paidStmt->fetchColumn();
 
     return [
-        'user_id' =>
-            $userId,
-
-        'completed_work' =>
-            count($works),
-
-        'total_due' =>
-            number_format(
-                $totalDue,
-                2,
-                '.',
-                ''
-            ),
-
-        'total_paid' =>
-            number_format(
-                $totalPaid,
-                2,
-                '.',
-                ''
-            ),
-
-        'remaining' =>
-            number_format(
-                $remaining,
-                2,
-                '.',
-                ''
-            )
+        'user_id' => $userId,
+       'completed_work' => $completedWork,
+        'total_due' => number_format($totalDue, 2, '.', ''),
+        'total_paid' => number_format($totalPaid, 2, '.', ''),
+        'remaining' => number_format(max(0, $totalDue - $totalPaid), 2, '.', '')
     ];
 }
+ 
 public function deletePayment(int $paymentId): array
 {
     if ($paymentId <= 0) {
@@ -1471,28 +1215,18 @@ public function getUsersByAgency(string $agencyId): array
 
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
-public function getUserVehicles(
-    int $userId,
-    string $agencyId
-): array {
 
+public function getUserVehicles(int $userId, string $agencyId): array
+{
     if ($userId <= 0) {
-        throw new InvalidArgumentException(
-            'Valid user_id is required'
-        );
+        throw new InvalidArgumentException('Valid user_id is required');
     }
 
     $agencyId = trim($agencyId);
 
     if ($agencyId === '') {
-        throw new InvalidArgumentException(
-            'agency_id is required'
-        );
+        throw new InvalidArgumentException('agency_id is required');
     }
-
-    // =====================================================
-    // GET VEHICLES WHERE THIS USER COMPLETED WORK
-    // =====================================================
 
     $stmt = $this->pdo->prepare("
         SELECT
@@ -1503,302 +1237,91 @@ public function getUserVehicles(
             v.vehicle_type,
             v.agency_id,
             v.Repo_init_and_Parked_by,
-            v.Repo_init_and_Parked_at,
-            v.parked_by,
-            v.parked_at
+            v.Repo_init_and_Parked_at
         FROM vehicle v
         WHERE v.agency_id = ?
-          AND (
-                v.Repo_init_and_Parked_by = ?
-                OR
-                v.parked_by = ?
-              )
+          AND v.Repo_init_and_Parked_by = ?
         ORDER BY v.vehicle_number ASC
     ");
 
-    $stmt->execute([
-        $agencyId,
-        $userId,
-        $userId
-    ]);
-
+    $stmt->execute([$agencyId, $userId]);
     $vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $rateStmt = $this->pdo->prepare("
+        SELECT Repo_init_and_Parked_rate
+        FROM payment_rates
+        WHERE agency_id = ?
+          AND LOWER(TRIM(vehicle_type)) = LOWER(TRIM(?))
+        LIMIT 1
+    ");
+
+    $paidStmt = $this->pdo->prepare("
+        SELECT COALESCE(SUM(amount), 0)
+        FROM admin_payment
+        WHERE user_id = ?
+          AND repo_year = ?
+          AND repo_month = ?
+          AND loan_number = ?
+          AND LOWER(TRIM(repo_status)) = LOWER(TRIM(?))
+          AND deleted_at IS NULL
+    ");
 
     $result = [];
 
     foreach ($vehicles as $vehicle) {
+        $vehicleType = trim((string)($vehicle['vehicle_type'] ?? ''));
+        $vehicleAgencyId = trim((string)($vehicle['agency_id'] ?? ''));
 
-        $vehicleType = trim(
-            (string)($vehicle['vehicle_type'] ?? '')
-        );
-
-        if ($vehicleType === '') {
+        if ($vehicleType === '' || $vehicleAgencyId === '') {
             continue;
         }
 
-        $vehicleAgencyId = trim(
-            (string)($vehicle['agency_id'] ?? '')
-        );
+        $rateStmt->execute([$vehicleAgencyId, $vehicleType]);
+        $rate = $rateStmt->fetchColumn();
 
-        if ($vehicleAgencyId === '') {
+        if ($rate === false || (float)$rate <= 0) {
             continue;
         }
 
+        $totalAmount = (float)$rate;
+        $workType = 'Repo init and Parked';
 
-        // =================================================
-        // GET PAYMENT RATE
-        // =================================================
-
-        $rateStmt = $this->pdo->prepare("
-            SELECT
-                repo_mark_rate,
-                parked_rate
-            FROM payment_rates
-            WHERE agency_id = ?
-              AND LOWER(TRIM(vehicle_type)) =
-                  LOWER(TRIM(?))
-            LIMIT 1
-        ");
-
-        $rateStmt->execute([
-            $vehicleAgencyId,
-            $vehicleType
+        $paidStmt->execute([
+            $userId,
+            $vehicle['repo_year'],
+            $vehicle['repo_month'],
+            $vehicle['loan_number'],
+            $workType
         ]);
 
-        $rate = $rateStmt->fetch(PDO::FETCH_ASSOC);
+        $paidAmount = (float)$paidStmt->fetchColumn();
+        $remainingAmount = $totalAmount - $paidAmount;
 
-        if (!$rate) {
+        // Do not show work that has already been fully paid.
+        if ($remainingAmount <= 0) {
             continue;
         }
 
-
-        // =================================================
-        // CHECK Repo init and Parked WORK
-        // =================================================
-
-        if (
-            (int)($vehicle['Repo_init_and_Parked_by'] ?? 0)
-            === $userId
-        ) {
-
-            $totalAmount =
-                (float)$rate['repo_mark_rate'];
-
-            if ($totalAmount > 0) {
-
-                $paidStmt = $this->pdo->prepare("
-                    SELECT
-                        COALESCE(SUM(amount), 0)
-                    FROM admin_payment
-                    WHERE user_id = ?
-                      AND repo_year = ?
-                      AND repo_month = ?
-                      AND loan_number = ?
-                      AND LOWER(TRIM(repo_status)) =
-                          'Repo init and Parked'
-                ");
-
-                $paidStmt->execute([
-                    $userId,
-                    $vehicle['repo_year'],
-                    $vehicle['repo_month'],
-                    $vehicle['loan_number']
-                ]);
-
-                $paidAmount =
-                    (float)$paidStmt->fetchColumn();
-
-                $remainingAmount =
-                    $totalAmount - $paidAmount;
-
-                // =========================================
-                // IMPORTANT
-                // Fully paid => DO NOT ADD TO RESULT
-                // =========================================
-
-                if ($remainingAmount > 0) {
-
-                    $result[] = [
-                        'repo_year' =>
-                            $vehicle['repo_year'],
-
-                        'repo_month' =>
-                            $vehicle['repo_month'],
-
-                        'loan_number' =>
-                            $vehicle['loan_number'],
-
-                        'vehicle_number' =>
-                            $vehicle['vehicle_number'],
-
-                        'vehicle_type' =>
-                            $vehicleType,
-
-                        'agency_id' =>
-                            $vehicleAgencyId,
-
-                        'Repo_init_and_Parked_by' =>
-                            $vehicle['Repo_init_and_Parked_by'],
-
-                        'Repo_init_and_Parked_at' =>
-                            $vehicle['Repo_init_and_Parked_at'],
-
-                        'parked_by' =>
-                            $vehicle['parked_by'],
-
-                        'parked_at' =>
-                            $vehicle['parked_at'],
-
-                        'work_type' =>
-                            'Repo init and Parked',
-
-                        'completed_at' =>
-                            $vehicle['Repo_init_and_Parked_at'],
-
-                        'total_amount' =>
-                            number_format(
-                                $totalAmount,
-                                2,
-                                '.',
-                                ''
-                            ),
-
-                        'paid_amount' =>
-                            number_format(
-                                $paidAmount,
-                                2,
-                                '.',
-                                ''
-                            ),
-
-                        'remaining_amount' =>
-                            number_format(
-                                $remainingAmount,
-                                2,
-                                '.',
-                                ''
-                            )
-                    ];
-                }
-            }
-        }
-
-
-        // =================================================
-        // CHECK PARKED WORK
-        // =================================================
-
-        if (
-            (int)($vehicle['parked_by'] ?? 0)
-            === $userId
-        ) {
-
-            $totalAmount =
-                (float)$rate['parked_rate'];
-
-            if ($totalAmount > 0) {
-
-                $paidStmt = $this->pdo->prepare("
-                    SELECT
-                        COALESCE(SUM(amount), 0)
-                    FROM admin_payment
-                    WHERE user_id = ?
-                      AND repo_year = ?
-                      AND repo_month = ?
-                      AND loan_number = ?
-                      AND LOWER(TRIM(repo_status)) =
-                          'parked'
-                ");
-
-                $paidStmt->execute([
-                    $userId,
-                    $vehicle['repo_year'],
-                    $vehicle['repo_month'],
-                    $vehicle['loan_number']
-                ]);
-
-                $paidAmount =
-                    (float)$paidStmt->fetchColumn();
-
-                $remainingAmount =
-                    $totalAmount - $paidAmount;
-
-
-                // =========================================
-                // IMPORTANT
-                // Fully paid => DO NOT ADD TO RESULT
-                // =========================================
-
-                if ($remainingAmount > 0) {
-
-                    $result[] = [
-                        'repo_year' =>
-                            $vehicle['repo_year'],
-
-                        'repo_month' =>
-                            $vehicle['repo_month'],
-
-                        'loan_number' =>
-                            $vehicle['loan_number'],
-
-                        'vehicle_number' =>
-                            $vehicle['vehicle_number'],
-
-                        'vehicle_type' =>
-                            $vehicleType,
-
-                        'agency_id' =>
-                            $vehicleAgencyId,
-
-                        'Repo_init_and_Parked_by' =>
-                            $vehicle['Repo_init_and_Parked_by'],
-
-                        'Repo_init_and_Parked_at' =>
-                            $vehicle['Repo_init_and_Parked_at'],
-
-                        'parked_by' =>
-                            $vehicle['parked_by'],
-
-                        'parked_at' =>
-                            $vehicle['parked_at'],
-
-                        'work_type' =>
-                            'Parked',
-
-                        'completed_at' =>
-                            $vehicle['parked_at'],
-
-                        'total_amount' =>
-                            number_format(
-                                $totalAmount,
-                                2,
-                                '.',
-                                ''
-                            ),
-
-                        'paid_amount' =>
-                            number_format(
-                                $paidAmount,
-                                2,
-                                '.',
-                                ''
-                            ),
-
-                        'remaining_amount' =>
-                            number_format(
-                                $remainingAmount,
-                                2,
-                                '.',
-                                ''
-                            )
-                    ];
-                }
-            }
-        }
+        $result[] = [
+            'repo_year' => $vehicle['repo_year'],
+            'repo_month' => $vehicle['repo_month'],
+            'loan_number' => $vehicle['loan_number'],
+            'vehicle_number' => $vehicle['vehicle_number'],
+            'vehicle_type' => $vehicleType,
+            'agency_id' => $vehicleAgencyId,
+            'Repo_init_and_Parked_by' => $vehicle['Repo_init_and_Parked_by'],
+            'Repo_init_and_Parked_at' => $vehicle['Repo_init_and_Parked_at'],
+            'work_type' => $workType,
+            'completed_at' => $vehicle['Repo_init_and_Parked_at'],
+            'total_amount' => number_format($totalAmount, 2, '.', ''),
+            'paid_amount' => number_format($paidAmount, 2, '.', ''),
+            'remaining_amount' => number_format($remainingAmount, 2, '.', '')
+        ];
     }
 
     return $result;
 }
+      
 }
 
 
