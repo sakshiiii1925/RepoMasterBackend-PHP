@@ -52,31 +52,7 @@ class InvoicePdfService
         }
 
 
-        // =========================================================
-        // DIGITAL SIGNATURE
-        // =========================================================
-
-        $signatureHtml = '';
-
-        $signaturePath =
-            __DIR__ . '/../assets/digital_sign.png';
-
-        if (file_exists($signaturePath)) {
-
-            $signatureData = base64_encode(
-                file_get_contents($signaturePath)
-            );
-
-            $signatureHtml = '
-                <img
-                    src="data:image/png;base64,' .
-                    $signatureData .
-                    '"
-                    class="signature-image"
-                >
-            ';
-        }
-
+        
 
         // =========================================================
         // VALUES
@@ -906,7 +882,7 @@ table {
      ========================================================= -->
 
 <div class="signature-title">
-    DIGITAL SIGNATURE
+    SIGNATURE
 </div>
 
 
@@ -936,7 +912,7 @@ table {
 
 <td class="signature-cell center">
 
-    <strong>Digitally Signed By</strong><br>
+    <strong>Signed By</strong><br>
 
     <strong>REPO MASTER</strong>
 
@@ -952,16 +928,11 @@ table {
 
     <br><br>
 
-    <span style="font-size:7px;">
-        Digitally signed on:<br>
-         ' . date("d/m/Y h:i:s A") . '
-    </span>
+    
 
     <br>
 
-    <span style="font-size:6.5px;">
-        This document is digitally signed.
-    </span>
+  
 
 </td>
 
